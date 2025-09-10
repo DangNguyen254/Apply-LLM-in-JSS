@@ -1,34 +1,30 @@
-class Job:
-    def __init__(self, id, name, operation_list, priority):
-        self.id = id
-        self.name = name
-        self.operation_list = operation_list
-        self.priority = priority
+from pydantic import BaseModel
+from typing import Optional, List
 
-class Operation:
-    def __init__(self, id, name, machine_need, duration):
-        self.id = id
-        self.name = name
-        self.machine_need = machine_need
-        self.duration = duration
+class Job(BaseModel):
+    id: str
+    operation_list: List[str] #List of ipers id
+    priority: int
 
-class Machine:
-    def __init__(self, id, name):
-        self.id = id
-        self.name = name
+class Operation(BaseModel):
+    id: str
+    machine_id: str
+    processing_time: int
+    predecessors: List[str] #List of opers id
 
-class ScheduledOperation:
-    def __init__(self, id, job_belong, machine_assigned, time_start, time_end):
-        self.id = id
-        self.job_belong = job_belong
-        self.machine_assigned = machine_assigned
-        self.time_start = time_start
-        self.time_end = time_end
+class Machine(BaseModel):
+    id: str
+    name: str
+    availability: bool
 
-class Schedule:
-    def __init__(self, id, scheduled_op_list):
-        self.id = id
-        self.scheduled_op_list = scheduled_op_list
+class ScheduledOperation(BaseModel):
+    job_id: str
+    operation_id: str
+    machine_id: str
+    
+    start_time: int
+    end_time: int
 
-        
-
+class Schedule(BaseModel):
+    makespan: int
+    scheduled_operations: List[ScheduledOperation]  
