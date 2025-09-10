@@ -9,4 +9,4 @@ __pycache__/
 .env
 
 # Directory list
-../dir_tree.txt
+dir_tree.txt
