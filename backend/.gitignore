@@ -1,5 +1,4 @@
 # backend/.gitignore
-
 # Python virtual environment
 venv/
 
@@ -10,4 +9,8 @@ __pycache__/
 .env
 
 # Directory list
+<<<<<<< HEAD
 ../dir_tree.txt
+=======
+dir_tree.txt
+>>>>>>> testing
