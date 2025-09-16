@@ -1,0 +1,17 @@
+# backend/.gitignore
+# Python virtual environment
+backend/venv/
+
+# Python cache files
+backend/__pycache__/
+backend/app/__pycache__/
+backend/app/models/__pycache__/
+backend/app/services/__pycache__/
+# Environment variables (contains secrets!)
+backend/.env
+
+# Directory list
+dir_tree.txt
+
+# target
+frontend/target
