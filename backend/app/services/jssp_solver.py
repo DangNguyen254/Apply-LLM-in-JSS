@@ -1,4 +1,4 @@
-from app.models.jssp_model import Job, Operation, Machine, ScheduledOperation, Schedule
+from ..models.jssp_model import Job, Operation, Machine, ScheduledOperation, Schedule
 from ortools.sat.python import cp_model
 #python -m app.services.jssp_solver
 
