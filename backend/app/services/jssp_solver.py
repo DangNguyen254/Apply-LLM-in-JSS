@@ -2,46 +2,6 @@ from ..models.jssp_model import Job, Operation, Machine, ScheduledOperation, Sch
 from ortools.sat.python import cp_model
 #python -m app.services.jssp_solver
 
-# A list of Machine objects
-machines = [
-    Machine(id="M001", name="Cutter"),
-    Machine(id="M002", name="Welder"),
-    Machine(id="M003", name="Painter")
-]
-
-# A list of Job objects
-jobs = [
-    # Job 1
-    Job(
-        id="J001",
-        priority=1,
-        operation_list=[
-            Operation(id="O001", machine_id="M001", processing_time=3, predecessors=[]),
-            Operation(id="O002", machine_id="M002", processing_time=2, predecessors=["O001"]),
-            Operation(id="O003", machine_id="M003", processing_time=2, predecessors=["O002"])
-        ]
-    ),
-    # Job 2
-    Job(
-        id="J002",
-        priority=1,
-        operation_list=[
-            Operation(id="O004", machine_id="M001", processing_time=2, predecessors=[]),
-            Operation(id="O005", machine_id="M003", processing_time=1, predecessors=["O004"]),
-            Operation(id="O006", machine_id="M002", processing_time=4, predecessors=["O005"])
-        ]
-    ),
-    # Job 3
-    Job(
-        id="J003",
-        priority=2, # Higher priority
-        operation_list=[
-            Operation(id="O007", machine_id="M002", processing_time=4, predecessors=[]),
-            Operation(id="O008", machine_id="M003", processing_time=3, predecessors=["O007"])
-        ]
-    )
-]
-
 def transform_machine(machines):
     machines_dict = {machine.id: machine for machine in machines}
     return machines_dict
@@ -106,7 +66,7 @@ def add_precedence_constrain(cp, cp_variables):
             current_op = job_intervals[i]
             next_op = job_intervals[i+1]
 
-            cp.Add(next_op.StartExpr() <= current_op.EndExpr())
+            cp.Add(next_op.StartExpr() >= current_op.EndExpr())
     
     return cp
 
@@ -200,11 +160,3 @@ def solve_jssp(jobs: list, machines: list):
     final_schedule = solver(jobs_data, jobs, machines)
 
     return final_schedule
-
-if __name__ == "__main__":
-    # Use the mock jobs and machines you defined at the top of the file
-    final_schedule = solve_jssp(jobs, machines)
-    
-    if final_schedule:
-        # Pydantic has a nice method to print a readable JSON output
-        print(final_schedule.model_dump_json(indent=4))

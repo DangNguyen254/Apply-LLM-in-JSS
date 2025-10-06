@@ -1,8 +1,10 @@
 package tdtu.dang.jssp.controllers;
+import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
 import tdtu.dang.jssp.models.*;
 import tdtu.dang.jssp.views.GanttChart;
+import tdtu.dang.jssp.services.ApiClient;
 
 import javafx.fxml.FXML;
 import javafx.scene.control.Button;
@@ -13,7 +15,8 @@ import tdtu.dang.jssp.models.ScheduledOperation;
 
 
 public class MainViewController {
-    @FXML private TextArea jobDisplayArea;
+    // @FXML private TextArea jobDisplayArea;
+    @FXML private javafx.scene.control.TreeView<String> jobTreeView;
     @FXML private TextArea machineDisplayArea;
     @FXML private TextArea resultDisplayArea;
 
@@ -45,30 +48,36 @@ public class MainViewController {
         String command = promptInput.getText();
         statusDisplayArea.setText("Command submitted: " + command);
     }
-    @FXML
 
-    private void handleSolveButton(){
-        statusDisplayArea.setText("Solve button clicked! Calling the solver...");
-        ganttChart.displaySchedule(createMockSchedule());
+    @FXML
+    private void handleSolveButton() {
+        // You would create your ApiClient instance here or have it as a class member
+        ApiClient apiClient = new ApiClient();
+        String problemId = "problem_1"; // Get from a UI element later
+
+        try {
+            statusDisplayArea.setText("Solving problem: " + problemId + "...");
+            
+            // Make the API call
+            Schedule schedule = apiClient.solveProblem(problemId);
+
+            // If successful, update the UI
+            statusDisplayArea.setText("Solution found! Makespan: " + schedule.getMakespan());
+            ganttChart.displaySchedule(schedule);
+
+        } catch (IOException | InterruptedException e) {
+            // This block runs if either exception occurs
+
+            // 1. Log the full error for debugging purposes
+            e.printStackTrace();
+
+            // 2. Show a friendly error message to the user in the UI
+            statusDisplayArea.setText("Error: Failed to get schedule. Is the backend server running?");
+        }
     }
 
     @FXML
     private void handleResetButton(){
         statusDisplayArea.setText("Reset button clicked! Clearing the view.");
-    }
-
-    private Schedule createMockSchedule() {
-        List<ScheduledOperation> ops = new ArrayList<>();
-
-        // Manually create a few scheduled operations
-        ops.add(new ScheduledOperation("J001", "O001", "M001", 0, 3));
-        ops.add(new ScheduledOperation("J002", "O004", "M001", 3, 5));
-        ops.add(new ScheduledOperation("J001", "O002", "M002", 3, 5));
-        ops.add(new ScheduledOperation("J003", "O007", "M002", 5, 9));
-        ops.add(new ScheduledOperation("J001", "O003", "M003", 5, 7));
-        ops.add(new ScheduledOperation("J002", "O005", "M003", 7, 8));
-
-        // Create the final schedule object with a makespan
-        return new Schedule(9, ops);
     }
 }

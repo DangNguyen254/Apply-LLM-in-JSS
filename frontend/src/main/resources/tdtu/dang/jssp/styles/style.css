@@ -1,0 +1,119 @@
+/* --- Base and Root Styles --- */
+.root {
+    -fx-background-color: #2D3748; /* A dark slate gray */
+    -fx-font-family: "Segoe UI", Arial, sans-serif;
+    -fx-font-size: 14px;
+    /* Also define the standard property for compatibility */
+    background-color: #2D3748;
+    font-family: "Segoe UI", Arial, sans-serif;
+    font-size: 14px;
+}
+
+/* --- Labels and Text --- */
+.label {
+    -fx-text-fill: #E2E8F0; /* Light gray text for readability */
+    -fx-font-weight: bold;
+    /* Also define the standard property for compatibility */
+    color: #E2E8F0;
+    font-weight: bold;
+}
+
+.chart-title {
+    -fx-font-size: 24px;
+    -fx-text-fill: #FFFFFF;
+    /* Also define the standard property for compatibility */
+    font-size: 24px;
+    color: #FFFFFF;
+}
+
+/* --- Buttons --- */
+.button {
+    -fx-background-color: #4A5568;
+    -fx-text-fill: white;
+    -fx-font-weight: bold;
+    -fx-background-radius: 5;
+    -fx-border-radius: 5;
+    /* Also define the standard property for compatibility */
+    background-color: #4A5568;
+    color: white;
+    font-weight: bold;
+    border-radius: 5px;
+}
+
+.button:hover {
+    -fx-background-color: #2C5282; /* A darker blue on hover */
+    /* Also define the standard property for compatibility */
+    background-color: #2C5282;
+}
+
+/* --- Text Areas and Input Fields --- */
+.text-area {
+    -fx-background-color: #1A202C;
+    -fx-text-fill: #CBD5E0;
+    -fx-border-color: #4A5568;
+    -fx-border-width: 1;
+    -fx-border-radius: 5;
+    -fx-background-insets: 0;
+    /* Also define the standard property for compatibility */
+    background-color: #1A202C;
+    color: #CBD5E0;
+    border: 1px solid #4A5568;
+    border-radius: 5px;
+}
+
+.text-area .content {
+    -fx-background-color: #1A202C;
+     /* Also define the standard property for compatibility */
+    background-color: #1A202C;
+}
+
+.text-input {
+    -fx-prompt-text-fill: #718096;
+}
+
+
+/* --- Containers and Panes --- */
+.container-box {
+    -fx-background-color: #4A5568;
+    -fx-background-radius: 8;
+    -fx-padding: 10;
+    /* Also define the standard property for compatibility */
+    background-color: #4A5568;
+    border-radius: 8px;
+    padding: 10px;
+}
+
+.gantt-chart-pane {
+    -fx-background-color: #4A5568; /* Match the container box */
+    /* Also define the standard property for compatibility */
+    background-color: #4A5568;
+}
+
+
+/* --- TreeView (for job list) --- */
+.tree-view {
+    -fx-background-color: #1A202C;
+    -fx-border-color: #4A5568;
+}
+.tree-cell {
+    -fx-text-fill: #CBD5E0;
+    -fx-background-color: transparent;
+}
+.tree-cell:filled:hover {
+    -fx-background-color: #2C5282;
+}
+.tree-cell:filled:selected {
+    -fx-background-color: #3182CE;
+}
+
+/* --- Gantt Chart Specific Styles --- */
+.axis-label {
+    -fx-font-size: 11px;
+    -fx-fill: #E2E8F0; /* Lighter text for axis ticks */
+}
+
+.machine-label {
+    -fx-font-size: 14px;
+    -fx-font-weight: bold;
+    -fx-fill: #FFFFFF;
+}
