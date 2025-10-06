@@ -24,8 +24,12 @@ public class MainApp extends Application{
             // Set the window title.
             primaryStage.setTitle("JSSP Solver with LLM");
 
+            // fill screen without hide the menu bar
+            primaryStage.setMaximized(true);
+
             // Place the Scene onto the Stage.
             primaryStage.setScene(scene);
+            
 
             // Show the Stage (make the window visible).
             primaryStage.show();
