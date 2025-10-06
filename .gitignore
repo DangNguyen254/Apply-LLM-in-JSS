@@ -1,19 +1,14 @@
-# .gitignore
-# Python virtual environment
+# Python cache and virtual environment
+**/__pycache__/
 backend/venv/
-
-# Python cache files
-backend/__pycache__/
-backend/app/__pycache__/
-backend/app/models/__pycache__/
-backend/app/services/__pycache__/
-backend/app/api/__pycache__/
-
-# Environment variables (contains secrets!)
 backend/.env
 
-# Directory list
+# Java / Maven build output
+frontend/target/
+
+# Generated files
 dir_tree.txt
 
-# target
-frontend/target
+# Common IDE files (optional but recommended)
+.vscode/
+.idea/
