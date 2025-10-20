@@ -3,6 +3,8 @@
 backend/venv/
 backend/.env
 
+# Test code
+backend/prompt_tester.py
 # Java / Maven build output
 frontend/target/
 
