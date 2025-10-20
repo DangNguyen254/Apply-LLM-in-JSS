@@ -161,3 +161,18 @@ def interpret_user_command(user_command: UserCommand, problem_id: str = "problem
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"An error occurred during interpretation: {e}")
+    
+@router.post("/reset", tags=["Scheduling"])
+def reset_problem_state(problem_id: str = "problem_1"):
+    """
+    Resets the specified problem's state to its original definition from mock_data.
+    """
+    if problem_id not in TEST_PROBLEMS:
+        raise HTTPException(status_code=404, detail="Problem not found")
+
+    # Re-initialize the state for the specified problem using a deep copy
+    app_state[problem_id] = {
+        "jobs": [Job(**j) for j in TEST_PROBLEMS[problem_id]["jobs"]],
+        "machines": [Machine(**m) for m in TEST_PROBLEMS[problem_id]["machines"]],
+    }
+    return {"message": f"Problem '{problem_id}' has been reset successfully."}

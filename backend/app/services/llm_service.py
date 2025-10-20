@@ -49,7 +49,7 @@ def interpret_command(user_text: str, current_jobs: list) -> dict:
 
     The user's request will be preceded by a block describing the 'Current Problem State'.
     Use this state to understand relative terms like 'first', 'last', or references to specific job IDs.
-    If the user's command has multiple intentions (e.g., changing priority AND adjusting an operation), choose only the most significant action to perform.
+    If the user's command has multiple intentions (e.g., changing priority AND adjusting an operation), choose only the most significant action to perform and explain to the user to do one action at a time.
     """
 
     # Build the dynamic context string from the current jobs
