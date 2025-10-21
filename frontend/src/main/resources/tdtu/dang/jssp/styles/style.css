@@ -117,3 +117,17 @@
     -fx-font-weight: bold;
     -fx-fill: #FFFFFF;
 }
+
+.gantt-chart-pane {
+    -fx-background-color: #1A202C;
+    background-color: #1A202C;
+}
+
+.gantt-scroll-pane {
+    -fx-background-color: #1A202C;
+    background-color: #1A202C;
+}
+.gantt-scroll-pane > .viewport {
+    -fx-background-color: #1A202C;
+    background-color: #1A202C;
+}

@@ -160,7 +160,7 @@ def interpret_user_command(user_command: UserCommand, problem_id: str = "problem
                 llm_response["explanation"] += f"\nSuccessfully changed priority for Job ID: {job_id_to_modify} to {new_priority}."
 
         elif action == "add_machine":
-            machine_name = parameters.get("name")
+            machine_name = parameters.get("machine_name")
             if not machine_name:
                 raise HTTPException(status_code=400, detail="LLM response missing 'name' for add_machine action.")
 
@@ -213,7 +213,7 @@ def interpret_user_command(user_command: UserCommand, problem_id: str = "problem
                         op.predecessors = [op_list[i-1].id]
                 job_to_modify.operation_list = op_list
                 llm_response["explanation"] += f"\nSuccessfully swapped operations in Job ID: {job_id}."
-                
+
         return llm_response
 
     except Exception as e:

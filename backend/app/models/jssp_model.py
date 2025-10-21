@@ -1,5 +1,5 @@
 from pydantic import BaseModel
-from typing import Optional, List
+from typing import List, Dict
 
 class Operation(BaseModel):
     id: str
@@ -29,3 +29,5 @@ class ScheduledOperation(BaseModel):
 class Schedule(BaseModel):
     makespan: int
     scheduled_operations: List[ScheduledOperation]  
+    machine_utilization: Dict[str, float]  # e.g., {"M001": 0.85, "M002": 0.9}
+    average_flow_time: float

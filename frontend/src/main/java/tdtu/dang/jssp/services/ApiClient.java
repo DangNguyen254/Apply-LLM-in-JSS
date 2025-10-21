@@ -100,7 +100,6 @@ public class ApiClient{
         HttpRequest request = HttpRequest.newBuilder()
                 .uri(URI.create(url))
                 .header("Content-Type", "application/json")
-                // MODIFIED: Send the body as raw UTF-8 bytes instead of a String
                 .POST(HttpRequest.BodyPublishers.ofString(requestBody))
                 .build();
 

@@ -105,6 +105,10 @@ def process_solution(solver, cp_variables, jobs: list[Job], machines: list[Machi
     scheduled_operations = []
     index_to_machine_id = {i: machine.id for i, machine in enumerate(machines)}
 
+    # Dictionaries to hold data for KPI calculations
+    machine_busy_time = {machine.id: 0 for machine in machines}
+    job_flow_times = {} # job_id -> (min_start, max_end)    
+
     for j_id, job_intervals in enumerate(cp_variables):
         for t_id, interval in enumerate(job_intervals):
             job = jobs[j_id]
@@ -114,6 +118,16 @@ def process_solution(solver, cp_variables, jobs: list[Job], machines: list[Machi
             
             start_time = solver.Value(interval.StartExpr())
             end_time = solver.Value(interval.EndExpr())
+            duration = end_time - start_time
+
+            # Aggregate data for KPIs
+            machine_busy_time[machine_id] += duration
+
+            if job.id not in job_flow_times:
+                job_flow_times[job.id] = [start_time, end_time]
+            else:
+                job_flow_times[job.id][0] = min(job_flow_times[job.id][0], start_time)
+                job_flow_times[job.id][1] = max(job_flow_times[job.id][1], end_time)
 
             scheduled_op = ScheduledOperation(
                 job_id=job.id,
@@ -125,10 +139,17 @@ def process_solution(solver, cp_variables, jobs: list[Job], machines: list[Machi
             scheduled_operations.append(scheduled_op)
 
     makespan = solver.ObjectiveValue()
-    
+
+    # Calculate KPIs
+    machine_utilization = {m_id: (busy_time / makespan) for m_id, busy_time in machine_busy_time.items()}
+    total_flow_time = sum(end - start for start, end in job_flow_times.values())
+    average_flow_time = total_flow_time / len(jobs) if jobs else 0
+
     final_schedule = Schedule(
         makespan=int(makespan),
-        scheduled_operations=scheduled_operations
+        scheduled_operations=scheduled_operations,
+        machine_utilization=machine_utilization,
+        average_flow_time=average_flow_time
     )
 
     return final_schedule

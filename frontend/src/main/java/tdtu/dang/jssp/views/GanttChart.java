@@ -12,8 +12,7 @@ import javafx.scene.shape.Rectangle;
 import javafx.scene.text.Font;
 import javafx.scene.text.FontWeight;
 import javafx.scene.text.Text;
-import tdtu.dang.jssp.models.Schedule;
-import tdtu.dang.jssp.models.ScheduledOperation;
+import tdtu.dang.jssp.models.*;
 
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -25,7 +24,7 @@ public class GanttChart extends Pane {
     // --- Chart Layout Constants ---
     private static final double TIME_SCALE = 50.0;
     private static final double ROW_HEIGHT = 70.0;
-    private static final double HEADER_WIDTH = 100.0; // Increased for potentially longer machine names
+    private static final double HEADER_WIDTH = 120.0; // Increased for potentially longer machine names
     private static final double PADDING = 25.0;
     private static final double TIME_AXIS_HEIGHT = 30.0;
     private static final double RECT_V_PADDING = 8.0;
@@ -43,7 +42,7 @@ public class GanttChart extends Pane {
      * Renders the Gantt chart. Rows are now based on Machines.
      * All operations for the same Job will have the same color.
      */
-    public void displaySchedule(Schedule schedule) {
+    public void displaySchedule(Schedule schedule, List<Job> jobs, List<Machine> machines) {
         clear();
         if (schedule == null || schedule.getScheduledOperations().isEmpty()) {
             return;
@@ -58,7 +57,7 @@ public class GanttChart extends Pane {
 
         // --- Draw Chart Components ---
         drawTimeAxis(schedule.getMakespan());
-        drawMachineLabels(machineIds);
+        drawMachineLabels(machineIds, machines);
         drawOperationBlocks(schedule.getScheduledOperations(), machineIds);
     }
 
@@ -153,10 +152,10 @@ public class GanttChart extends Pane {
     /**
      * Draws the machine labels on the Y-axis.
      */
-    private void drawMachineLabels(List<String> machineIds) {
+    private void drawMachineLabels(List<String> machineIds, List<Machine> machines) {
         for (int i = 0; i < machineIds.size(); i++) {
             double y = PADDING + TIME_AXIS_HEIGHT + (i * ROW_HEIGHT) + (ROW_HEIGHT / 2) - 10;
-            Label machineLabel = new Label(machineIds.get(i));
+            Label machineLabel = new Label(machines.get(i).getName());
             machineLabel.getStyleClass().add("machine-label");
             machineLabel.setLayoutX(PADDING);
             machineLabel.setLayoutY(y);

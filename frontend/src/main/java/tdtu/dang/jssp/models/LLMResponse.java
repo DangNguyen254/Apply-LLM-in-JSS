@@ -35,14 +35,18 @@ public class LLMResponse {
         @JsonProperty("job_id")
         private String jobId;
 
+        @JsonProperty("job_name")
         private String jobName;
+
         private Integer priority;
         private List<OperationData> operations;
 
         @JsonProperty("machine_id")
         private String machineId;
 
+        @JsonProperty("machine_name")
         private String machineName;
+        
         private boolean availability;
         
         public String getJobId() {

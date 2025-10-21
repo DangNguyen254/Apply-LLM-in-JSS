@@ -46,7 +46,7 @@ def interpret_command(user_text: str, current_jobs: list, current_machines: list
     - "priority": integer (the new priority for the job)
 
     5. If the action is 'add_machine', the 'parameters' must contain:
-    - "name": string (the name of the new machine)
+    - "machine_name": string (the name of the new machine)
 
     6. If the action is 'modify_machine', the 'parameters' must contain:
     - "machine_id": string

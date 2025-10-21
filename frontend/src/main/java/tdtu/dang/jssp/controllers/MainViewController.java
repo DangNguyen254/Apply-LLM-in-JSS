@@ -9,6 +9,7 @@ import tdtu.dang.jssp.views.GanttChart;
 
 import java.io.IOException;
 import java.util.List;
+import java.util.Map;
 
 public class MainViewController {
 
@@ -47,7 +48,7 @@ public class MainViewController {
             updateJobTreeView(jobs);
             updateMachineDisplay(machines);
         } catch (IOException | InterruptedException e) {
-            statusDisplayArea.setText("Error: Could not load initial problem data.");
+            statusDisplayArea.appendText("Error: Could not load initial problem data.\n");
             e.printStackTrace();
         }
     }
@@ -84,27 +85,42 @@ public class MainViewController {
         }
         machineDisplayArea.setText(sb.toString());
     }
+    @FXML
+    private void handlePromptKeyPress(javafx.scene.input.KeyEvent event) {
+        // Submit on Enter, but allow Shift+Enter for new lines
+        if (event.getCode() == javafx.scene.input.KeyCode.ENTER && !event.isShiftDown()) {
+            event.consume(); // Prevents a newline from being added to the text area
+            handleSubmitButton(); // Trigger the submit action
+        }
+    }
 
     @FXML
     private void handleSubmitButton() {
         String command = promptInput.getText();
         if (command == null || command.trim().isEmpty()) {
-            statusDisplayArea.setText("Please enter a command.");
+            statusDisplayArea.appendText("Please enter a command.\n");
             return;
         }
 
-        statusDisplayArea.setText("Interpreting command...");
+        promptInput.clear();
+
+        statusDisplayArea.appendText("Interpreting command...\n");
         try {
             LLMResponse llmResponse = apiClient.interpretCommand(command, this.problemId);
-            statusDisplayArea.setText(llmResponse.getExplanation());
+            statusDisplayArea.appendText(llmResponse.getExplanation()+"\n");
 
             String action = llmResponse.getAction();
             // if ("add_job".equals(action) || "remove_job".equals(action) || "adjust_job".equals(action) || "modify_job".equals(action)
             // || "add_machine".equals(action) || "modify_machine".equals(action)) {
             //     refreshAllData(); // Refresh the job/machine lists
             // }
-            if(!"solve".equals(action)){
-                refreshAllData(); // Refresh the job/machine lists
+            if("solve".equals(action)){
+                statusDisplayArea.appendText("Solving problem by prompt.\n");
+                handleSolveButton();
+            }
+            else{
+                statusDisplayArea.appendText("Refreshing data\n");
+                refreshAllData();
             }
         } catch (IOException | InterruptedException e) {
             e.printStackTrace();
@@ -115,34 +131,45 @@ public class MainViewController {
     @FXML
     private void handleSolveButton() {
         try {
-            statusDisplayArea.setText("Solving problem: " + problemId + "...");
+            statusDisplayArea.appendText("Solving problem: " + problemId + "\n");
             Schedule schedule = apiClient.solveProblem(problemId);
+            List<Job> jobs = apiClient.getJobs(problemId);
+            List<Machine> machines = apiClient.getMachines(problemId);
 
-            statusDisplayArea.setText("Solution found! Makespan: " + schedule.getMakespan());
-            ganttChart.displaySchedule(schedule);
+            statusDisplayArea.appendText("Solution found! Makespan: " + schedule.getMakespan() + "\n");
+            ganttChart.displaySchedule(schedule, jobs, machines);
             
-            // Update result display area
-            resultDisplayArea.setText("Makespan: " + schedule.getMakespan());
+            // Build a detailed result string
+            StringBuilder resultText = new StringBuilder();
+            resultText.append(String.format("Makespan: %d\n", schedule.getMakespan()));
+            resultText.append(String.format("Average Job Flow Time: %.2f\n\n", schedule.getAverageFlowTime()));
+            resultText.append("Machine Utilization:\n");
+            if (schedule.getMachineUtilization() != null) {
+                for (Map.Entry<String, Double> entry : schedule.getMachineUtilization().entrySet()) {
+                    resultText.append(String.format("- %s: %.2f%%\n", entry.getKey(), entry.getValue() * 100));
+                }
+            }
+            resultDisplayArea.appendText(resultText.toString());
 
         } catch (IOException | InterruptedException e) {
             e.printStackTrace();
-            statusDisplayArea.setText("Error: Failed to get schedule. Is the backend server running?");
+            statusDisplayArea.appendText("Error: " + e.getMessage() + "\n");
         }
     }
 
     @FXML
     private void handleResetButton() {
         try {
-            statusDisplayArea.setText("Resetting problem state...");
+            statusDisplayArea.appendText("Resetting problem state...\n");
             apiClient.resetProblem(problemId);
             ganttChart.clear();
             resultDisplayArea.clear();
             promptInput.clear();
-            refreshAllData(); // Reload the original state from the backend
-            statusDisplayArea.setText("Problem has been reset to its original state.");
+            refreshAllData();
+            statusDisplayArea.appendText("Problem has been reset to its original state.\n");
         } catch (IOException | InterruptedException e) {
             e.printStackTrace();
-            statusDisplayArea.setText("Error: Failed to reset problem state.");
+            statusDisplayArea.appendText("Error: Failed to reset problem state.\n");
         }
     }
 }
