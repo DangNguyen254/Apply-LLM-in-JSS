@@ -12,7 +12,7 @@ if api_key:
 else:
     print("WARNING: GOOGLE_API_KEY not found. The LLM service will not work.")
 
-def interpret_command(user_text: str, current_jobs: list) -> dict:
+def interpret_command(user_text: str, current_jobs: list, current_machines: list) -> dict:
     """
     Takes a user's command and the current list of jobs,
     and returns a structured JSON command from the LLM.
@@ -30,37 +30,54 @@ def interpret_command(user_text: str, current_jobs: list) -> dict:
 
     1. If the action is 'add_job', the 'parameters' must contain:
     - "operations": A list of objects, where each object has:
-        - "machine_id": string (e.g., "M1", "L1")
+        - "machine_id": string (e.g., "M001", "M002")
         - "processing_time": integer
     - "priority": integer (optional, defaults to 1)
 
     2. If the action is 'remove_job', the 'parameters' must contain:
-    - "job_id": string (e.g., "J101")
+    - "job_id": string (e.g., "J001")
 
     3. If the action is 'adjust_job', the 'parameters' must contain:
     - "job_id": string (the ID of the job to change)
-    - "operations": A NEW, COMPLETE list of operation objects that will REPLACE the old ones. Even if the user asks to change just one operation, you must provide the full, updated list of all operations for the job.
+    - "operations": A NEW, COMPLETE list of operation objects that will REPLACE the old ones.
 
     4. If the action is 'modify_job', the 'parameters' must contain:
     - "job_id": string
     - "priority": integer (the new priority for the job)
 
-    5. If the action is 'solve', the 'parameters' object must be empty: {}
+    5. If the action is 'add_machine', the 'parameters' must contain:
+    - "name": string (the name of the new machine)
 
+    6. If the action is 'modify_machine', the 'parameters' must contain:
+    - "machine_id": string
+    - "availability": boolean (true for available, false for unavailable)
+
+    7. If the action is 'swap_operations', the 'parameters' must contain:
+    - "job_id": string
+    - "operation_index_1": integer
+    - "operation_index_2": integer}. Use 0-based indexing (e.g., the first operation is index 0).
+    
+    8. If the action is 'solve', the 'parameters' object must be empty: {}
+    
     The user's request will be preceded by a block describing the 'Current Problem State'.
     Use this state to understand relative terms like 'first', 'last', or references to specific job IDs.
+    When the user mentions a machine by name (e.g., "Milling Machine"), use the provided machine list to find the corresponding machine_id (e.g., "M001").
+    When the user mentions a job by name (e.g., "Component Alpha"), use the provided job list to find the corresponding job_id (e.g., "J001").
     If the user's command has multiple intentions (e.g., changing priority AND adjusting an operation), choose only the most significant action to perform and explain to the user to do one action at a time.
     """
 
     # Build the dynamic context string from the current jobs
     state_summary = "--- Current Problem State ---\n"
+    state_summary += "Machines (ID: Name):\n"
+    for machine in current_machines:
+        state_summary += f"- {machine.id}: {machine.name}\n"
+    
+    state_summary += "\nJobs (ID: Name):\n"
     if not current_jobs:
         state_summary += "There are currently no jobs.\n"
     else:
-        state_summary += "Jobs:\n"
         for job in current_jobs:
-            # Use job.id because 'job' is a Pydantic object
-            state_summary += f"- Job ID: {job.id}\n"
+            state_summary += f"- Job ID: {job.id} (Name: {job.name})\n"
     state_summary += "--- End of State ---\n\n"
 
     # Combine into the full prompt

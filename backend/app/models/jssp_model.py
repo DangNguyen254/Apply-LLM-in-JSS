@@ -9,6 +9,7 @@ class Operation(BaseModel):
     
 class Job(BaseModel):
     id: str
+    name: str
     operation_list: List[Operation] #List of ipers id
     priority: int
 
