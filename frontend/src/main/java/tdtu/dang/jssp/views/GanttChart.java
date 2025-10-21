@@ -18,10 +18,11 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.stream.Collectors;
 
 public class GanttChart extends Pane {
 
-    // --- Chart Layout Constants ---
+    //  Chart Layout Constants 
     private static final double TIME_SCALE = 50.0;
     private static final double ROW_HEIGHT = 70.0;
     private static final double HEADER_WIDTH = 120.0; // Increased for potentially longer machine names
@@ -29,7 +30,7 @@ public class GanttChart extends Pane {
     private static final double TIME_AXIS_HEIGHT = 30.0;
     private static final double RECT_V_PADDING = 8.0;
 
-    // --- Color Management ---
+    //  Color Management 
     private final Map<String, Color> jobColors = new HashMap<>();
     private final List<Color> colorPalette = List.of(
             Color.web("#8ecae6"), Color.web("#219ebc"), Color.web("#023047"),
@@ -48,35 +49,40 @@ public class GanttChart extends Pane {
             return;
         }
 
-        // --- Y-Axis: Use Machine IDs to define rows ---
-        List<String> machineIds = schedule.getScheduledOperations().stream()
+        Map<String, String> jobIdToNameMap = jobs.stream()
+                .collect(Collectors.toMap(Job::getId, Job::getName));
+
+        Map<String, String> machineIdToNameMap = machines.stream()
+                .collect(Collectors.toMap(Machine::getId, Machine::getName));
+
+        List<String> machineIdsInSchedule = schedule.getScheduledOperations().stream()
                 .map(ScheduledOperation::getMachineId)
                 .distinct()
                 .sorted()
                 .toList();
 
-        // --- Draw Chart Components ---
+        //  Draw Chart Components 
         drawTimeAxis(schedule.getMakespan());
-        drawMachineLabels(machineIds, machines);
-        drawOperationBlocks(schedule.getScheduledOperations(), machineIds);
+        drawMachineLabels(machineIdsInSchedule, machineIdToNameMap);
+        drawOperationBlocks(schedule.getScheduledOperations(), machineIdsInSchedule, jobIdToNameMap);
     }
 
     /**
      * Draws the individual operation blocks onto the chart.
      */
-    private void drawOperationBlocks(List<ScheduledOperation> operations, List<String> machineIds) {
+    private void drawOperationBlocks(List<ScheduledOperation> operations, List<String> machineIds, Map<String, String> jobIdToNameMap) {
         for (ScheduledOperation op : operations) {
-            // --- Coloring based on Job ID ---
+            // Coloring based on Job ID 
             Color jobColor = jobColors.computeIfAbsent(op.getJobId(), k -> getNextColor());
 
-            // --- Calculate Position and Size ---
+            // Calculate Position and Size 
             double x = HEADER_WIDTH + PADDING + (op.getStartTime() * TIME_SCALE);
             double y = PADDING + TIME_AXIS_HEIGHT + (machineIds.indexOf(op.getMachineId()) * ROW_HEIGHT);
             double width = (op.getEndTime() - op.getStartTime()) * TIME_SCALE;
 
             if (width < 1.0) width = 1.0;
 
-            // --- Create Visual Components ---
+            // Create Visual Components 
             StackPane taskContainer = new StackPane();
             taskContainer.setLayoutX(x);
             taskContainer.setLayoutY(y);
@@ -87,13 +93,14 @@ public class GanttChart extends Pane {
             rect.setArcWidth(12);
             rect.setArcHeight(12);
             
-            // --- Create Text Labels for Inside the Block ---
-            // Display Job ID and Operation ID, since the row already indicates the machine.
-            Label jobIdLabel = new Label("Job: " + op.getJobId());
+            String jobName = jobIdToNameMap.getOrDefault(op.getJobId(), op.getJobId());
+
+            // Create Text Labels for Inside the Block 
+            Label jobIdLabel = new Label(jobName);
             jobIdLabel.setFont(Font.font("System", FontWeight.BOLD, 11));
             jobIdLabel.setTextFill(Color.WHITE);
 
-            Label opIdLabel = new Label("Op: " + op.getOperationId());
+            Label opIdLabel = new Label(op.getOperationId());
             opIdLabel.setFont(Font.font("System", FontWeight.NORMAL, 10));
             opIdLabel.setTextFill(Color.WHITE.deriveColor(0, 1, 1, 0.9));
 
@@ -102,20 +109,20 @@ public class GanttChart extends Pane {
             labelBox.setPadding(new Insets(0, 0, 0, 8));
             labelBox.setSpacing(2);
 
-            // --- Assemble the Block ---
+            // Assemble the Block 
             taskContainer.getChildren().add(rect);
 
-            // --- Text Fitting Logic ---
+            // Text Fitting Logic 
             Text tempText = new Text("Job: " + op.getJobId());
             tempText.setFont(Font.font("System", FontWeight.BOLD, 11));
             if (tempText.getLayoutBounds().getWidth() < width - 16) {
                 taskContainer.getChildren().add(labelBox);
             }
 
-            // --- Tooltip for Detailed Info on Hover ---
+            // Tooltip for Detailed Info on Hover 
             String tooltipText = String.format(
-                "Job ID: %s\nOperation ID: %s\nMachine ID: %s\n\nStart Time: %d\nEnd Time: %d\nDuration: %d",
-                op.getJobId(), op.getOperationId(), op.getMachineId(),
+                "Job: %s (%s)\nOperation: %s\nMachine: %s\n\nStart: %d\nEnd: %d\nDuration: %d",
+                op.getJobId(), jobName, op.getOperationId(), op.getMachineId(),
                 op.getStartTime(), op.getEndTime(), (op.getEndTime() - op.getStartTime())
             );
             Tooltip tooltip = new Tooltip(tooltipText);
@@ -152,10 +159,13 @@ public class GanttChart extends Pane {
     /**
      * Draws the machine labels on the Y-axis.
      */
-    private void drawMachineLabels(List<String> machineIds, List<Machine> machines) {
-        for (int i = 0; i < machineIds.size(); i++) {
+    private void drawMachineLabels(List<String> machineIdsInSchedule, Map<String, String> machineIdToNameMap) {
+        for (int i = 0; i < machineIdsInSchedule.size(); i++) {
+            String machineId = machineIdsInSchedule.get(i);
+            String machineName = machineIdToNameMap.getOrDefault(machineId, machineId); // Look up the correct name
+            
             double y = PADDING + TIME_AXIS_HEIGHT + (i * ROW_HEIGHT) + (ROW_HEIGHT / 2) - 10;
-            Label machineLabel = new Label(machines.get(i).getName());
+            Label machineLabel = new Label(machineName);
             machineLabel.getStyleClass().add("machine-label");
             machineLabel.setLayoutX(PADDING);
             machineLabel.setLayoutY(y);

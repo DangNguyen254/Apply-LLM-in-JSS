@@ -26,58 +26,41 @@ def interpret_command(user_text: str, current_jobs: list, current_machines: list
 
     The JSON object must have three keys: 'action', 'parameters', and 'explanation'.
 
-    Here are the valid actions and the required structure for their 'parameters':
+    Here are the valid actions and their required 'parameters':
 
-    1. If the action is 'add_job', the 'parameters' must contain:
-    - "operations": A list of objects, where each object has:
-        - "machine_id": string (e.g., "M001", "M002")
-        - "processing_time": integer
-    - "priority": integer (optional, defaults to 1)
+    1. 'add_job': For creating a new job. Parameters: {"job_name": string (optional), "operations": A list of objects, where each object has:"machine_id": string, "processing_time": integer}
+    2. 'remove_job': For deleting an existing job. Parameters: {"job_id": string}
+    3. 'adjust_job': For replacing all operations in a job with a new list. Parameters: {"job_id": string, "operations": [...]}
+    4. 'modify_job': For changing properties of a job, like its name or priority. Parameters: {"job_id": string, "priority": integer (optional), "job_name": string (optional)}
+    5. 'add_machine': For creating a new machine. Parameters: {"machine_name": string}
+    6. 'modify_machine': For changing properties of a machine, like its name or availability. Parameters: {"machine_id": string, "availability": boolean (optional), "machine_name": string (optional)}
+    7. 'swap_operations': For reordering two operations within a job. Parameters: {"job_id": string, "operation_index_1": integer, "operation_index_2": integer}
+    8. 'solve': For running the solver to generate a schedule. Parameters: {}
+    9. 'error': For when a command cannot be understood. Parameters: {"error_message": string}
 
-    2. If the action is 'remove_job', the 'parameters' must contain:
-    - "job_id": string (e.g., "J001")
-
-    3. If the action is 'adjust_job', the 'parameters' must contain:
-    - "job_id": string (the ID of the job to change)
-    - "operations": A NEW, COMPLETE list of operation objects that will REPLACE the old ones.
-
-    4. If the action is 'modify_job', the 'parameters' must contain:
-    - "job_id": string
-    - "priority": integer (the new priority for the job)
-
-    5. If the action is 'add_machine', the 'parameters' must contain:
-    - "machine_name": string (the name of the new machine)
-
-    6. If the action is 'modify_machine', the 'parameters' must contain:
-    - "machine_id": string
-    - "availability": boolean (true for available, false for unavailable)
-
-    7. If the action is 'swap_operations', the 'parameters' must contain:
-    - "job_id": string
-    - "operation_index_1": integer
-    - "operation_index_2": integer}. Use 0-based indexing (e.g., the first operation is index 0).
-    
-    8. If the action is 'solve', the 'parameters' object must be empty: {}
-    
+    When the user mentions a job name or a machine name, the name is behind the job or the machine (e.g, name of "Job ABC" is "ABC).
     The user's request will be preceded by a block describing the 'Current Problem State'.
     Use this state to understand relative terms like 'first', 'last', or references to specific job IDs.
     When the user mentions a machine by name (e.g., "Milling Machine"), use the provided machine list to find the corresponding machine_id (e.g., "M001").
     When the user mentions a job by name (e.g., "Component Alpha"), use the provided job list to find the corresponding job_id (e.g., "J001").
     If the user's command has multiple intentions (e.g., changing priority AND adjusting an operation), choose only the most significant action to perform and explain to the user to do one action at a time.
+    Do not assign operations to machines that are marked as unavailable. If the user tries, explain this in the 'explanation' field and do not perform the action.
+    If the user's command is unrelated to scheduling or does not match any action, the action MUST be 'error' and the explanation should state that the command could not be understood.
     """
 
-    # Build the dynamic context string from the current jobs
+    # State Summary
     state_summary = "--- Current Problem State ---\n"
-    state_summary += "Machines (ID: Name):\n"
-    for machine in current_machines:
-        state_summary += f"- {machine.id}: {machine.name}\n"
+    state_summary += "Machines (Index: ID | Name | Available):\n"
+    for i, machine in enumerate(current_machines):
+        state_summary += f"{i}: {machine.id} | {machine.name} | Available: {machine.availability}\n"
     
-    state_summary += "\nJobs (ID: Name):\n"
+    state_summary += "\nJobs (ID: Name | Operations):\n"
     if not current_jobs:
         state_summary += "There are currently no jobs.\n"
     else:
         for job in current_jobs:
-            state_summary += f"- Job ID: {job.id} (Name: {job.name})\n"
+            op_summary = ", ".join([f"{op.id} on {op.machine_id}" for op in job.operation_list])
+            state_summary += f"- Job ID: {job.id} (Name: {job.name}) | Operations: [{op_summary}]\n"
     state_summary += "--- End of State ---\n\n"
 
     # Combine into the full prompt

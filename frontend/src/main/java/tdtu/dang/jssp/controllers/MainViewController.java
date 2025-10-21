@@ -149,7 +149,7 @@ public class MainViewController {
                     resultText.append(String.format("- %s: %.2f%%\n", entry.getKey(), entry.getValue() * 100));
                 }
             }
-            resultDisplayArea.appendText(resultText.toString());
+            resultDisplayArea.setText(resultText.toString());
 
         } catch (IOException | InterruptedException e) {
             e.printStackTrace();

@@ -48,7 +48,16 @@ public class LLMResponse {
         private String machineName;
         
         private boolean availability;
-        
+
+        @JsonProperty("error_message")
+        private String errorMessage;
+
+        @JsonProperty("operation_index_1")
+        private Integer operationIndex1;
+
+        @JsonProperty("operation_index_2")
+        private Integer operationIndex2;
+
         public String getJobId() {
             return jobId;
         }
@@ -70,6 +79,16 @@ public class LLMResponse {
         public boolean isAvailability() {
             return availability;
         }   
+        public String getErrorMessage() {
+            return errorMessage;
+        }
+        public Integer getOperationIndex1() {
+            return operationIndex1;
+        }
+        public Integer getOperationIndex2() {
+            return operationIndex2;
+        }
+
 
         public void setAvailability(boolean availability) {
             this.availability = availability;
@@ -92,6 +111,16 @@ public class LLMResponse {
         public void setPriority(Integer priority) {
             this.priority = priority;
         }
+        public void setErrorMessage(String errorMessage) {
+            this.errorMessage = errorMessage;
+        }
+        public void setOperationIndex1(Integer operationIndex1) {
+            this.operationIndex1 = operationIndex1;
+        }
+        public void setOperationIndex2(Integer operationIndex2) {
+            this.operationIndex2 = operationIndex2;
+        }
+
 
     }
 
