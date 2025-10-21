@@ -18,7 +18,9 @@ public class ApiClient{
     private static final String BASE_URL = "http://127.0.0.1:8000/api/scheduling"; // Backend server address
 
     public ApiClient(){
-        this.httpClient = HttpClient.newHttpClient();
+        this.httpClient = HttpClient.newBuilder()
+                .version(HttpClient.Version.HTTP_1_1)
+                .build();
         this.objectMapper = new ObjectMapper();
     }
     public List<Job> getJobs(String problemId) throws IOException, InterruptedException{
@@ -83,5 +85,47 @@ public class ApiClient{
         // We don't need TypeReference because Schedule is not a generic list
         Schedule schedule = objectMapper.readValue(response.body(), Schedule.class);
         return schedule;
+    }
+
+    public LLMResponse interpretCommand(String commandText, String problemId) throws IOException, InterruptedException {
+        String url = BASE_URL + "/interpret?problem_id=" + problemId;
+
+        String requestBody = objectMapper.createObjectNode()
+                .put("command", commandText)
+                .toString();
+                
+        // Debug print
+        // System.out.println(">>> Sending Request Body: " + requestBody);
+
+        HttpRequest request = HttpRequest.newBuilder()
+                .uri(URI.create(url))
+                .header("Content-Type", "application/json")
+                // MODIFIED: Send the body as raw UTF-8 bytes instead of a String
+                .POST(HttpRequest.BodyPublishers.ofString(requestBody))
+                .build();
+
+        HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
+
+        if (response.statusCode() != 200) {
+            throw new IOException("API Error " + response.statusCode() + ": " + response.body());
+        }
+
+        LLMResponse llmResponse = objectMapper.readValue(response.body(), LLMResponse.class);
+        return llmResponse;
+    }
+
+    public void resetProblem(String problemId) throws IOException, InterruptedException {
+        String url = BASE_URL + "/reset?problem_id=" + problemId;
+
+        HttpRequest request = HttpRequest.newBuilder()
+                .uri(URI.create(url))
+                .POST(HttpRequest.BodyPublishers.noBody())
+                .build();
+
+        HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
+
+        if (response.statusCode() != 200) {
+            throw new IOException("Failed to reset problem state: " + response.body());
+        }
     }
 }

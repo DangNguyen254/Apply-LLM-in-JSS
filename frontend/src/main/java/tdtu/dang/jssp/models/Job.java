@@ -4,6 +4,7 @@ import com.fasterxml.jackson.annotation.JsonProperty;
 
 public class Job{
     private String id;
+    private String name;
     private int priority;
 
     @JsonProperty("operation_list")
@@ -13,14 +14,18 @@ public class Job{
 
     }
 
-    public Job(String id, int priority, List<Operation> opList){
+    public Job(String id, String name, int priority, List<Operation> opList){
         this.setId(id);
+        this.setName(name);
         this.setOpList(opList);
         this.setPriority(priority);
     }
 
     public String getId() {
         return id;
+    }
+    public String getName() {
+        return name;
     }
     public List<Operation> getOpList() {
         return opList;
@@ -30,6 +35,9 @@ public class Job{
     }
     public void setId(String id) {
         this.id = id;
+    }
+    public void setName(String name) {
+        this.name = name;
     }
     public void setOpList(List<Operation> opList) {
         this.opList = opList;
