@@ -3,7 +3,7 @@ from .api import api_router
 
 app = FastAPI(
     title="LLM-JSSP API",
-    description="API for the Job Shop Scheduling Problem Solver",
+    description="API for the Job Shop Scheduling Problem solver and LLM agent.",
     version="1.0.0"
 )
 

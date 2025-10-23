@@ -5,20 +5,21 @@ import com.fasterxml.jackson.annotation.JsonProperty;
 public class Operation{
     private String id;
 
-    @JsonProperty("machine_id")
-    private String machineId;
+    @JsonProperty("machine_group_id")
+    private String machineGroupId;
 
     @JsonProperty("processing_time")
     private int processingTime;
+    
     private List<String> predecessors; // List of predecessors id
 
     public Operation(){
 
     }
 
-    public Operation(String id, String machineId, int processingTime, List<String> predecessors){
+    public Operation(String id, String machineGroupId, int processingTime, List<String> predecessors){
         this.setId(id);
-        this.setMachineId(machineId); 
+        this.setMachineGroupId(machineGroupId); 
         this.setPredecessors(predecessors);
         this.setProcessingTime(processingTime);
     }
@@ -26,8 +27,8 @@ public class Operation{
     public String getId() {
         return id;
     }
-    public String getMachineId() {
-        return machineId;
+    public String getMachineGroupId() {
+        return machineGroupId;
     }
     public List<String> getPredecessors() {
         return predecessors;
@@ -39,8 +40,8 @@ public class Operation{
         this.id = id;
     }
 
-    public void setMachineId(String machineId) {
-        this.machineId = machineId;
+    public void setMachineGroupId(String machineGroupId) {
+        this.machineGroupId = machineGroupId;
     }
     public void setPredecessors(List<String> predecessors) {
         this.predecessors = predecessors;

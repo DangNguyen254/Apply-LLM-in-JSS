@@ -47,7 +47,7 @@
                      <Label text="Job Definitions:" />
                      <TreeView fx:id="jobTreeView" VBox.vgrow="ALWAYS" />
                      <Label text="Machine Definitions:" />
-                     <TextArea fx:id="machineDisplayArea" editable="false" wrapText="true" VBox.vgrow="ALWAYS" />
+                     <TextArea fx:id="machineDisplayArea" editable="false" focusTraversable="false" wrapText="true" VBox.vgrow="ALWAYS" />
                   </children>
                </VBox>
          </center>
@@ -59,7 +59,7 @@
                   </padding>
                   <children>
                      <Label prefHeight="30.0" prefWidth="45.0" text="Result:" />
-                     <TextArea fx:id="resultDisplayArea" editable="false" prefWidth="430.0" wrapText="true" />
+                     <TextArea fx:id="resultDisplayArea" editable="false" focusTraversable="false" prefWidth="430.0" wrapText="true" />
                   </children>
                   <BorderPane.margin>
                      <Insets top="5.0" />
@@ -109,7 +109,7 @@
                               <Label text="Status &amp; Logs:" />
                            </children>
                         </HBox>
-                        <TextArea fx:id="statusDisplayArea" editable="false" prefHeight="62.0" prefWidth="478.0" wrapText="true" VBox.vgrow="ALWAYS" />
+                        <TextArea fx:id="statusDisplayArea" editable="false" focusTraversable="false" prefHeight="62.0" prefWidth="478.0" wrapText="true" VBox.vgrow="ALWAYS" />
                      </children>
                   </VBox>
                </children>

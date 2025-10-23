@@ -3,7 +3,6 @@ package tdtu.dang.jssp.models;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import java.util.List;
 
-// Class represents the entire JSON object returned by the /interpret endpoint.
 public class LLMResponse {
 
     private String action;
@@ -19,7 +18,6 @@ public class LLMResponse {
     public LLMParameters getParameters() {
         return parameters;
     }
-
     public void setAction(String action) {
         this.action = action;
     }
@@ -30,57 +28,46 @@ public class LLMResponse {
         this.parameters = parameters;
     }
 
-    // Class represents the 'parameters' object in the JSON.
     public static class LLMParameters {
+        // Job-related parameters
         @JsonProperty("job_id")
         private String jobId;
-
         @JsonProperty("job_name")
         private String jobName;
-
         private Integer priority;
         private List<OperationData> operations;
 
-        @JsonProperty("machine_id")
-        private String machineId;
-
+        // MachineGroup-related parameters
+        @JsonProperty("machine_group_id")
+        private String machineGroupId;
         @JsonProperty("machine_name")
         private String machineName;
-        
-        private boolean availability;
+        private Integer quantity;
 
+        // Swap-related parameters
+        @JsonProperty("operation_index_1")
+        private Integer operationIndex1;
+        @JsonProperty("operation_index_2")
+        private Integer operationIndex2;
+        
+        // Error parameter
         @JsonProperty("error_message")
         private String errorMessage;
 
-        @JsonProperty("operation_index_1")
-        private Integer operationIndex1;
-
-        @JsonProperty("operation_index_2")
-        private Integer operationIndex2;
-
+        public String getErrorMessage() {
+            return errorMessage;
+        }
         public String getJobId() {
             return jobId;
         }
         public String getJobName() {
             return jobName;
         }
-        public String getMachineId() {
-            return machineId;
+        public String getMachineGroupId() {
+            return machineGroupId;
         }
         public String getMachineName() {
             return machineName;
-        }
-        public List<OperationData> getOperations() {
-            return operations;
-        }
-        public Integer getPriority() {
-            return priority;
-        }
-        public boolean isAvailability() {
-            return availability;
-        }   
-        public String getErrorMessage() {
-            return errorMessage;
         }
         public Integer getOperationIndex1() {
             return operationIndex1;
@@ -88,10 +75,17 @@ public class LLMResponse {
         public Integer getOperationIndex2() {
             return operationIndex2;
         }
-
-
-        public void setAvailability(boolean availability) {
-            this.availability = availability;
+        public List<OperationData> getOperations() {
+            return operations;
+        }
+        public Integer getPriority() {
+            return priority;
+        }
+        public Integer getQuantity() {
+            return quantity;
+        }
+        public void setErrorMessage(String errorMessage) {
+            this.errorMessage = errorMessage;
         }
         public void setJobId(String jobId) {
             this.jobId = jobId;
@@ -99,20 +93,11 @@ public class LLMResponse {
         public void setJobName(String jobName) {
             this.jobName = jobName;
         }
-        public void setMachineId(String machineId) {
-            this.machineId = machineId;
+        public void setMachineGroupId(String machineGroupId) {
+            this.machineGroupId = machineGroupId;
         }
         public void setMachineName(String machineName) {
             this.machineName = machineName;
-        }
-        public void setOperations(List<OperationData> operations) {
-            this.operations = operations;
-        }
-        public void setPriority(Integer priority) {
-            this.priority = priority;
-        }
-        public void setErrorMessage(String errorMessage) {
-            this.errorMessage = errorMessage;
         }
         public void setOperationIndex1(Integer operationIndex1) {
             this.operationIndex1 = operationIndex1;
@@ -120,30 +105,38 @@ public class LLMResponse {
         public void setOperationIndex2(Integer operationIndex2) {
             this.operationIndex2 = operationIndex2;
         }
-
+        public void setOperations(List<OperationData> operations) {
+            this.operations = operations;
+        }
+        public void setPriority(Integer priority) {
+            this.priority = priority;
+        }
+        public void setQuantity(Integer quantity) {
+            this.quantity = quantity;
+        }
 
     }
 
-    // This nested class represents an object inside the 'operations' list.
     public static class OperationData {
-        @JsonProperty("machine_id")
-        private String machineId;
+        // UPDATED: to use machine_group_id
+        @JsonProperty("machine_group_id")
+        private String machineGroupId;
 
         @JsonProperty("processing_time")
         private int processingTime;
 
-        public String getMachineId() {
-            return machineId;
+        public String getMachineGroupId() {
+            return machineGroupId;
         }
         public int getProcessingTime() {
             return processingTime;
         }
-        public void setMachineId(String machineId) {
-            this.machineId = machineId;
+        public void setMachineGroupId(String machineGroupId) {
+            this.machineGroupId = machineGroupId;
         }
         public void setProcessingTime(int processingTime) {
             this.processingTime = processingTime;
         }
-
+        
     }
 }

@@ -131,3 +131,19 @@
     -fx-background-color: #1A202C;
     background-color: #1A202C;
 }
+
+/* Style for any button that has keyboard focus. */
+.button:focused {
+    -fx-border-color: #0096C7; /* A bright, noticeable blue */
+    -fx-border-width: 2px;
+    -fx-border-insets: -1;
+    -fx-border-radius: 5;
+    -fx-effect: dropshadow(three-pass-box, rgba(2, 48, 71, 0.5), 10, 0, 0, 0); /* A subtle outer glow */
+}
+
+/* Consistent focus style for the text area. */
+.text-area:focused {
+    -fx-border-color: #0096C7;
+    -fx-border-width: 2px;
+    -fx-border-insets: -1;
+}

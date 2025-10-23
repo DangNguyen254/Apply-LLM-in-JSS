@@ -1,7 +1,10 @@
 package tdtu.dang.jssp.controllers;
 
+import javafx.application.Platform;
 import javafx.fxml.FXML;
 import javafx.scene.control.*;
+import javafx.scene.input.KeyCode;
+import javafx.scene.input.KeyEvent;
 import javafx.scene.layout.AnchorPane;
 import tdtu.dang.jssp.models.*;
 import tdtu.dang.jssp.services.ApiClient;
@@ -25,7 +28,7 @@ public class MainViewController {
 
     private GanttChart ganttChart;
     private final ApiClient apiClient = new ApiClient();
-    private final String problemId = "problem_1"; // Default problem ID
+    private final String problemId = "problem_1";
 
     @FXML
     public void initialize() {
@@ -36,24 +39,35 @@ public class MainViewController {
         AnchorPane.setRightAnchor(ganttChart, 0.0);
         ganttChartPane.getChildren().add(ganttChart);
 
-        // Load initial data when the application starts
+        // Add an EventFilter to the promptInput to handle Tab key presses.
+        // This is more reliable than an EventHandler for overriding default behavior.
+        promptInput.addEventFilter(KeyEvent.KEY_PRESSED, event -> {
+            if (event.getCode() == KeyCode.TAB) {
+                // Consume the event to prevent the TextArea from inserting a '\t' character.
+                event.consume();
+                // Manually move focus to the next control.
+                submitButton.requestFocus();
+            }
+        });
+
         refreshAllData();
+        
+        // Request focus on the prompt area after the UI is fully loaded.
+        Platform.runLater(() -> promptInput.requestFocus());
     }
 
-    // Central method to refresh data displays
     private void refreshAllData() {
         try {
             List<Job> jobs = apiClient.getJobs(problemId);
-            List<Machine> machines = apiClient.getMachines(problemId);
+            List<MachineGroup> machineGroups = apiClient.getMachineGroups(problemId);
             updateJobTreeView(jobs);
-            updateMachineDisplay(machines);
+            updateMachineGroupDisplay(machineGroups);
         } catch (IOException | InterruptedException e) {
             statusDisplayArea.appendText("Error: Could not load initial problem data.\n");
             e.printStackTrace();
         }
     }
 
-    // Method to populate the TreeView with job data
     private void updateJobTreeView(List<Job> jobs) {
         TreeItem<String> rootItem = new TreeItem<>("Jobs");
         rootItem.setExpanded(true);
@@ -65,7 +79,7 @@ public class MainViewController {
                 if (job.getOpList() != null) {
                     for (Operation op : job.getOpList()) {
                         TreeItem<String> opItem = new TreeItem<>(
-                                String.format("%s: Machine %s, Time %d", op.getId(), op.getMachineId(), op.getProcessingTime())
+                                String.format("%s: Group %s, Time %d", op.getId(), op.getMachineGroupId(), op.getProcessingTime())
                         );
                         jobItem.getChildren().add(opItem);
                     }
@@ -76,21 +90,21 @@ public class MainViewController {
         jobTreeView.setRoot(rootItem);
     }
 
-    // Method to populate the TextArea with machine data
-    private void updateMachineDisplay(List<Machine> machines) {
+    private void updateMachineGroupDisplay(List<MachineGroup> machineGroups) {
         StringBuilder sb = new StringBuilder();
-        for (Machine machine : machines) {
-            sb.append(String.format("ID: %s, Name: %s, Available: %b\n",
-                    machine.getId(), machine.getName(), machine.isAvailability()));
+        for (MachineGroup group : machineGroups) {
+            sb.append(String.format("Group ID: %s | Group Name: %s | Quantity: %d\n", group.getId(), group.getName(), group.getQuantity()));
         }
         machineDisplayArea.setText(sb.toString());
     }
+
     @FXML
-    private void handlePromptKeyPress(javafx.scene.input.KeyEvent event) {
-        // Submit on Enter, but allow Shift+Enter for new lines
-        if (event.getCode() == javafx.scene.input.KeyCode.ENTER && !event.isShiftDown()) {
-            event.consume(); // Prevents a newline from being added to the text area
-            handleSubmitButton(); // Trigger the submit action
+    private void handlePromptKeyPress(KeyEvent event) {
+        // This handler now only needs to worry about the Enter key for submission.
+        // The Tab key logic is handled by the EventFilter in the initialize() method.
+        if (event.getCode() == KeyCode.ENTER && !event.isShiftDown()) {
+            event.consume();
+            handleSubmitButton();
         }
     }
 
@@ -101,30 +115,33 @@ public class MainViewController {
             statusDisplayArea.appendText("Please enter a command.\n");
             return;
         }
-
         promptInput.clear();
-
-        statusDisplayArea.appendText("Interpreting command...\n");
+        statusDisplayArea.appendText("\n> " + command + "\n");
         try {
             LLMResponse llmResponse = apiClient.interpretCommand(command, this.problemId);
-            statusDisplayArea.appendText(llmResponse.getExplanation()+"\n");
+            statusDisplayArea.appendText(llmResponse.getExplanation() + "\n");
 
             String action = llmResponse.getAction();
-            // if ("add_job".equals(action) || "remove_job".equals(action) || "adjust_job".equals(action) || "modify_job".equals(action)
-            // || "add_machine".equals(action) || "modify_machine".equals(action)) {
-            //     refreshAllData(); // Refresh the job/machine lists
-            // }
-            if("solve".equals(action)){
-                statusDisplayArea.appendText("Solving problem by prompt.\n");
+            
+            if ("solve".equals(action)) {
+                statusDisplayArea.appendText("Solving problem\n");
                 handleSolveButton();
-            }
-            else{
-                statusDisplayArea.appendText("Refreshing data\n");
+            } else if (!"error".equals(action)) {
+                statusDisplayArea.appendText("Refreshing data...\n");
                 refreshAllData();
             }
+
         } catch (IOException | InterruptedException e) {
             e.printStackTrace();
-            statusDisplayArea.setText("Error: " + e.getMessage());
+            statusDisplayArea.appendText("Error: " + e.getMessage() + "\n");
+        }
+    }
+
+    @FXML
+    private void handleSubmitButtonKeyPress(KeyEvent event) {
+        if (event.getCode() == KeyCode.TAB) {
+            event.consume();
+            solveButton.requestFocus();
         }
     }
 
@@ -134,26 +151,33 @@ public class MainViewController {
             statusDisplayArea.appendText("Solving problem: " + problemId + "\n");
             Schedule schedule = apiClient.solveProblem(problemId);
             List<Job> jobs = apiClient.getJobs(problemId);
-            List<Machine> machines = apiClient.getMachines(problemId);
-
-            statusDisplayArea.appendText("Solution found! Makespan: " + schedule.getMakespan() + "\n");
-            ganttChart.displaySchedule(schedule, jobs, machines);
+            List<MachineGroup> machineGroups = apiClient.getMachineGroups(problemId);
             
-            // Build a detailed result string
+            statusDisplayArea.appendText("Solution found! Makespan: " + schedule.getMakespan() + "\n");
+            ganttChart.displaySchedule(schedule, jobs, machineGroups);
+            
             StringBuilder resultText = new StringBuilder();
             resultText.append(String.format("Makespan: %d\n", schedule.getMakespan()));
             resultText.append(String.format("Average Job Flow Time: %.2f\n\n", schedule.getAverageFlowTime()));
             resultText.append("Machine Utilization:\n");
             if (schedule.getMachineUtilization() != null) {
-                for (Map.Entry<String, Double> entry : schedule.getMachineUtilization().entrySet()) {
-                    resultText.append(String.format("- %s: %.2f%%\n", entry.getKey(), entry.getValue() * 100));
-                }
+                schedule.getMachineUtilization().entrySet().stream()
+                    .sorted(Map.Entry.comparingByKey())
+                    .forEach(entry -> resultText.append(String.format("- %s: %.2f%%\n", entry.getKey(), entry.getValue() * 100)));
             }
             resultDisplayArea.setText(resultText.toString());
 
         } catch (IOException | InterruptedException e) {
             e.printStackTrace();
             statusDisplayArea.appendText("Error: " + e.getMessage() + "\n");
+        }
+    }
+
+    @FXML
+    private void handleSolveButtonKeyPress(KeyEvent event) {
+        if (event.getCode() == KeyCode.TAB) {
+            event.consume();
+            resetButton.requestFocus();
         }
     }
 
@@ -170,6 +194,19 @@ public class MainViewController {
         } catch (IOException | InterruptedException e) {
             e.printStackTrace();
             statusDisplayArea.appendText("Error: Failed to reset problem state.\n");
+        }
+    }
+
+    @FXML
+    private void handleResetButtonKeyPress(KeyEvent event) {
+        if (event.getCode() == KeyCode.TAB) {
+            event.consume();
+            
+            // Use Platform.runLater to decouple the focus change from the event cycle.
+            Platform.runLater(() -> {
+                promptInput.requestFocus();
+                promptInput.positionCaret(promptInput.getLength());
+            });
         }
     }
 }

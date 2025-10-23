@@ -47,24 +47,13 @@ public class ApiClient{
         });
         return jobs;
     }
-    public List<Machine> getMachines(String problemId) throws IOException, InterruptedException{
-        String url = BASE_URL + "/machines?problem_id=" + problemId;
 
-        HttpRequest request = HttpRequest.newBuilder()
-            .uri(URI.create(url))
-            .GET()
-            .build();
-
+    public List<MachineGroup> getMachineGroups(String problemId) throws IOException, InterruptedException {
+        String url = BASE_URL + "/machine_groups?problem_id=" + problemId;
+        HttpRequest request = HttpRequest.newBuilder().uri(URI.create(url)).GET().build();
         HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
-
-        if(response.statusCode() != 200){
-            throw new IOException("Failed to fetch machines: "+response.body());
-        }
-
-        List<Machine> machines = objectMapper.readValue(response.body(), new TypeReference<List<Machine>>() {
-            
-        });
-        return machines;
+        if (response.statusCode() != 200) throw new IOException("Failed to fetch machine groups: " + response.body());
+        return objectMapper.readValue(response.body(), new TypeReference<>() {});
     }
 
     public Schedule solveProblem(String problemId) throws IOException, InterruptedException{

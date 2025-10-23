@@ -12,25 +12,27 @@ import javafx.scene.shape.Rectangle;
 import javafx.scene.text.Font;
 import javafx.scene.text.FontWeight;
 import javafx.scene.text.Text;
-import tdtu.dang.jssp.models.*;
+import tdtu.dang.jssp.models.Job;
+import tdtu.dang.jssp.models.MachineGroup;
+import tdtu.dang.jssp.models.Schedule;
+import tdtu.dang.jssp.models.ScheduledOperation;
 
-import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.function.Function;
 import java.util.stream.Collectors;
 
 public class GanttChart extends Pane {
 
-    //  Chart Layout Constants 
     private static final double TIME_SCALE = 50.0;
-    private static final double ROW_HEIGHT = 70.0;
-    private static final double HEADER_WIDTH = 120.0; // Increased for potentially longer machine names
-    private static final double PADDING = 25.0;
+    private static final double ROW_HEIGHT = 100.0;
+    private static final double HEADER_WIDTH = 120.0;
+    private static final double PADDING = 10.0;
     private static final double TIME_AXIS_HEIGHT = 30.0;
-    private static final double RECT_V_PADDING = 8.0;
+    private static final double RECT_V_PADDING = 4.0;
 
-    //  Color Management 
     private final Map<String, Color> jobColors = new HashMap<>();
     private final List<Color> colorPalette = List.of(
             Color.web("#8ecae6"), Color.web("#219ebc"), Color.web("#023047"),
@@ -39,68 +41,72 @@ public class GanttChart extends Pane {
     );
     private int colorIndex = 0;
 
-    /**
-     * Renders the Gantt chart. Rows are now based on Machines.
-     * All operations for the same Job will have the same color.
-     */
-    public void displaySchedule(Schedule schedule, List<Job> jobs, List<Machine> machines) {
+    public void displaySchedule(Schedule schedule, List<Job> jobs, List<MachineGroup> machineGroups) {
         clear();
-        if (schedule == null || schedule.getScheduledOperations().isEmpty()) {
+        if (schedule == null || schedule.getScheduledOperations().isEmpty() || machineGroups == null) {
             return;
         }
 
-        Map<String, String> jobIdToNameMap = jobs.stream()
-                .collect(Collectors.toMap(Job::getId, Job::getName));
+        List<MachineGroup> sortedGroups = machineGroups.stream()
+                .sorted(Comparator.comparing(MachineGroup::getId))
+                .collect(Collectors.toList());
 
-        Map<String, String> machineIdToNameMap = machines.stream()
-                .collect(Collectors.toMap(Machine::getId, Machine::getName));
+        Map<String, MachineGroup> groupMap = sortedGroups.stream()
+                .collect(Collectors.toMap(MachineGroup::getId, Function.identity()));
+                
+        Map<String, Job> jobMap = jobs.stream()
+                .collect(Collectors.toMap(Job::getId, Function.identity()));
 
-        List<String> machineIdsInSchedule = schedule.getScheduledOperations().stream()
-                .map(ScheduledOperation::getMachineId)
-                .distinct()
-                .sorted()
-                .toList();
-
-        //  Draw Chart Components 
         drawTimeAxis(schedule.getMakespan());
-        drawMachineLabels(machineIdsInSchedule, machineIdToNameMap);
-        drawOperationBlocks(schedule.getScheduledOperations(), machineIdsInSchedule, jobIdToNameMap);
+        drawMachineGroupLabels(sortedGroups);
+        drawOperationBlocks(schedule.getScheduledOperations(), sortedGroups, groupMap, jobMap);
     }
 
-    /**
-     * Draws the individual operation blocks onto the chart.
-     */
-    private void drawOperationBlocks(List<ScheduledOperation> operations, List<String> machineIds, Map<String, String> jobIdToNameMap) {
+    private void drawOperationBlocks(List<ScheduledOperation> operations, List<MachineGroup> sortedGroups, Map<String, MachineGroup> groupMap, Map<String, Job> jobMap) {
+        Map<String, Integer> groupRowIndexMap = new HashMap<>();
+        for (int i = 0; i < sortedGroups.size(); i++) {
+            groupRowIndexMap.put(sortedGroups.get(i).getId(), i);
+        }
+
         for (ScheduledOperation op : operations) {
-            // Coloring based on Job ID 
+            String[] instanceParts = op.getMachineInstanceId().split("_");
+            if (instanceParts.length < 2) continue;
+
+            String groupId = instanceParts[0];
+            int instanceIndex = Integer.parseInt(instanceParts[1]);
+
+            MachineGroup group = groupMap.get(groupId);
+            if (group == null || group.getQuantity() == 0) continue;
+
             Color jobColor = jobColors.computeIfAbsent(op.getJobId(), k -> getNextColor());
 
-            // Calculate Position and Size 
+            double subRowHeight = ROW_HEIGHT / group.getQuantity();
+            int groupRowIndex = groupRowIndexMap.get(groupId);
+
             double x = HEADER_WIDTH + PADDING + (op.getStartTime() * TIME_SCALE);
-            double y = PADDING + TIME_AXIS_HEIGHT + (machineIds.indexOf(op.getMachineId()) * ROW_HEIGHT);
+            double groupY = PADDING + TIME_AXIS_HEIGHT + (groupRowIndex * ROW_HEIGHT);
+            double y = groupY + (instanceIndex * subRowHeight);
             double width = (op.getEndTime() - op.getStartTime()) * TIME_SCALE;
+            double height = subRowHeight - (RECT_V_PADDING / 2.0);
 
             if (width < 1.0) width = 1.0;
+            if (height < 1.0) height = 1.0;
 
-            // Create Visual Components 
             StackPane taskContainer = new StackPane();
             taskContainer.setLayoutX(x);
-            taskContainer.setLayoutY(y);
+            taskContainer.setLayoutY(y + (RECT_V_PADDING / 4.0));
 
-            Rectangle rect = new Rectangle(width, ROW_HEIGHT - (RECT_V_PADDING * 2));
+            Rectangle rect = new Rectangle(width, height);
             rect.setFill(jobColor.deriveColor(0, 1.2, 1, 0.7));
             rect.setStroke(jobColor.darker());
             rect.setArcWidth(12);
             rect.setArcHeight(12);
-            
-            String jobName = jobIdToNameMap.getOrDefault(op.getJobId(), op.getJobId());
 
-            // Create Text Labels for Inside the Block 
-            Label jobIdLabel = new Label(jobName);
+            Label jobIdLabel = new Label("Job: " + op.getJobId());
             jobIdLabel.setFont(Font.font("System", FontWeight.BOLD, 11));
             jobIdLabel.setTextFill(Color.WHITE);
 
-            Label opIdLabel = new Label(op.getOperationId());
+            Label opIdLabel = new Label("Op: " + op.getOperationId());
             opIdLabel.setFont(Font.font("System", FontWeight.NORMAL, 10));
             opIdLabel.setTextFill(Color.WHITE.deriveColor(0, 1, 1, 0.9));
 
@@ -109,20 +115,20 @@ public class GanttChart extends Pane {
             labelBox.setPadding(new Insets(0, 0, 0, 8));
             labelBox.setSpacing(2);
 
-            // Assemble the Block 
             taskContainer.getChildren().add(rect);
 
-            // Text Fitting Logic 
             Text tempText = new Text("Job: " + op.getJobId());
             tempText.setFont(Font.font("System", FontWeight.BOLD, 11));
             if (tempText.getLayoutBounds().getWidth() < width - 16) {
                 taskContainer.getChildren().add(labelBox);
             }
 
-            // Tooltip for Detailed Info on Hover 
+            Job job = jobMap.get(op.getJobId());
+            String jobName = (job != null) ? job.getName() : "N/A";
+
             String tooltipText = String.format(
-                "Job: %s (%s)\nOperation: %s\nMachine: %s\n\nStart: %d\nEnd: %d\nDuration: %d",
-                op.getJobId(), jobName, op.getOperationId(), op.getMachineId(),
+                "Job: %s (%s)\nOperation ID: %s\nMachine Group: %s\nMachine Instance: %d\n\nStart Time: %d\nEnd Time: %d\nDuration: %d",
+                op.getJobId(), jobName, op.getOperationId(), group.getName(), instanceIndex,
                 op.getStartTime(), op.getEndTime(), (op.getEndTime() - op.getStartTime())
             );
             Tooltip tooltip = new Tooltip(tooltipText);
@@ -133,9 +139,6 @@ public class GanttChart extends Pane {
         }
     }
 
-    /**
-     * Draws the time axis at the top of the chart.
-     */
     private void drawTimeAxis(int makespan) {
         int tickStep = 1;
         if (makespan > 50) tickStep = 5;
@@ -156,16 +159,10 @@ public class GanttChart extends Pane {
         }
     }
 
-    /**
-     * Draws the machine labels on the Y-axis.
-     */
-    private void drawMachineLabels(List<String> machineIdsInSchedule, Map<String, String> machineIdToNameMap) {
-        for (int i = 0; i < machineIdsInSchedule.size(); i++) {
-            String machineId = machineIdsInSchedule.get(i);
-            String machineName = machineIdToNameMap.getOrDefault(machineId, machineId); // Look up the correct name
-            
+    private void drawMachineGroupLabels(List<MachineGroup> machineGroups) {
+        for (int i = 0; i < machineGroups.size(); i++) {
             double y = PADDING + TIME_AXIS_HEIGHT + (i * ROW_HEIGHT) + (ROW_HEIGHT / 2) - 10;
-            Label machineLabel = new Label(machineName);
+            Label machineLabel = new Label(machineGroups.get(i).getName());
             machineLabel.getStyleClass().add("machine-label");
             machineLabel.setLayoutX(PADDING);
             machineLabel.setLayoutY(y);

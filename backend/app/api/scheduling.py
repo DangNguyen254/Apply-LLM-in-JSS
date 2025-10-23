@@ -1,31 +1,22 @@
-import copy
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
-
-# Import models and services
-from ..models.jssp_model import Job, Machine, Operation, Schedule
+from ..models.jssp_model import Job, MachineGroup, Operation, Schedule
 from ..services.jssp_solver import solve_jssp
 from ..services.llm_service import interpret_command
-# mock data
 from .mock_data import TEST_PROBLEMS
 
-# This dictionary acts as simple, in-memory "database".
-app_state = {
-    "problem_1": {
-        "jobs": [Job(**j) for j in TEST_PROBLEMS["problem_1"]["jobs"]],
-        "machines": [Machine(**m) for m in TEST_PROBLEMS["problem_1"]["machines"]],
-    },
-    "problem_2": {
-        "jobs": [Job(**j) for j in TEST_PROBLEMS["problem_2"]["jobs"]],
-        "machines": [Machine(**m) for m in TEST_PROBLEMS["problem_2"]["machines"]],
-    }
-}
+app_state = { "problem_1": { "jobs": [Job(**j) for j in TEST_PROBLEMS["problem_1"]["jobs"]], "machine_groups": [MachineGroup(**mg) for mg in TEST_PROBLEMS["problem_1"]["machines"]] } }
+router = APIRouter(prefix="/scheduling")
 
-router = APIRouter()
-
-# Pydantic model for the request body (format)
 class UserCommand(BaseModel):
     command: str
+
+@router.get("/machine_groups", response_model=list[MachineGroup], tags=["Scheduling"])
+def get_machine_groups(problem_id: str = "problem_1"):
+    problem = app_state.get(problem_id)
+    if not problem:
+        raise HTTPException(status_code=404, detail="Problem not found")
+    return problem["machine_groups"]
 
 @router.get("/problems", tags=["Scheduling"])
 def list_problems():
@@ -38,39 +29,19 @@ def get_jobs_for_problem(problem_id: str = "problem_1"):
         raise HTTPException(status_code=404, detail="Problem not found")
     return problem["jobs"]
 
-@router.get("/machines", response_model=list[Machine], tags=["Scheduling"])
-def get_machines_for_problem(problem_id: str = "problem_1"):
-    problem = app_state.get(problem_id)
-    if not problem:
-        raise HTTPException(status_code=404, detail="Problem not found")
-    return problem["machines"]
-
 @router.post("/solve", response_model=Schedule, tags=["Scheduling"])
 def solve_schedule_endpoint(problem_id: str = "problem_1"):
     problem_data = app_state.get(problem_id)
     if not problem_data:
         raise HTTPException(status_code=404, detail="Problem not found")
-    
-    # Check the avaiability of the machines
-    available_machines = [m for m in problem_data["machines"] if m.availability]
-    available_machine_ids = {m.id for m in available_machines}
 
-    for job in problem_data["jobs"]:
-        for op in job.operation_list:
-            if op.machine_id not in available_machine_ids:
-                raise HTTPException(status_code=400, detail=f"Job {job.id} requires unavailable machine {op.machine_id}. Cannot solve.")
-            
     try:
-        # Pass the current state (Pydantic objects) to the solver
-        final_schedule = solve_jssp(jobs=problem_data["jobs"], machines=problem_data["machines"])
-
-        if final_schedule is None:
+        final_schedule = solve_jssp(jobs=problem_data["jobs"], machine_groups=problem_data["machine_groups"])
+        if not final_schedule:
             raise HTTPException(status_code=500, detail="Solver failed to find a solution.")
-    
         return final_schedule
-    
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"An error occurred during solving: {e}")
+        raise HTTPException(status_code=500, detail=f"An error occurred: {e}")
 
 @router.post("/interpret", tags=["LLM"])
 def interpret_user_command(user_command: UserCommand, problem_id: str = "problem_1"):
@@ -82,13 +53,12 @@ def interpret_user_command(user_command: UserCommand, problem_id: str = "problem
         llm_response = interpret_command(
             user_text=user_command.command,
             current_jobs=problem_data["jobs"],
-            current_machines=problem_data["machines"]
+            machine_groups=problem_data["machine_groups"]
         )
 
         action = llm_response.get("action")
         parameters = llm_response.get("parameters", {})
 
-        valid_machine_ids = {m.id for m in problem_data["machines"]}
         if action == "error":
             return llm_response # Pass the error explanation to the user
         
@@ -111,20 +81,18 @@ def interpret_user_command(user_command: UserCommand, problem_id: str = "problem
             if not operations_data:
                 raise HTTPException(status_code=400, detail=f"LLM response missing 'operations' for {action} action.")
             
+            valid_machine_group_ids = {mg.id for mg in problem_data["machine_groups"]}
+
             # Value Validation
             for op_data in operations_data:
-                if op_data.get("machine_id") not in valid_machine_ids:
-                    raise HTTPException(status_code=400, detail=f"Invalid machine_id '{op_data.get('machine_id')}' provided by LLM.")
-                
-                # Try to convert processing_time to an integer
+                if op_data.get("machine_group_id") not in valid_machine_group_ids:
+                    raise HTTPException(status_code=400, detail=f"Invalid machine_group_id '{op_data.get('machine_group_id')}' provided by LLM.")
                 try:
                     processing_time = int(op_data.get("processing_time"))
-                    if processing_time <= 0:
-                        raise ValueError
-                    op_data["processing_time"] = processing_time # Ensure it's stored as an int
+                    if processing_time <= 0: raise ValueError
+                    op_data["processing_time"] = processing_time
                 except (ValueError, TypeError):
-                    pt_val = op_data.get('processing_time')
-                    raise HTTPException(status_code=400, detail=f"Invalid processing_time '{pt_val}' provided by LLM. Must be a positive integer.")
+                    raise HTTPException(status_code=400, detail="Invalid processing_time provided by LLM.")
                 
             if action == "add_job":
                 existing_ids = {int(j.id[1:]) for j in problem_data["jobs"]}
@@ -135,7 +103,7 @@ def interpret_user_command(user_command: UserCommand, problem_id: str = "problem
                 for i, op_data in enumerate(operations_data):
                     op_id = f"{new_job_id}-OP{i+1:02d}"
                     predecessors = [f"{new_job_id}-OP{i:02d}"] if i > 0 else []
-                    new_op = Operation(id=op_id, machine_id=op_data["machine_id"], processing_time=op_data["processing_time"], predecessors=predecessors)
+                    new_op = Operation(id=op_id, machine_group_id=op_data["machine_group_id"], processing_time=op_data["processing_time"], predecessors=predecessors)
                     new_operations.append(new_op)
                 
                 job_name = parameters.get("job_name", f"New Job {new_job_id}")
@@ -158,32 +126,11 @@ def interpret_user_command(user_command: UserCommand, problem_id: str = "problem
                     for i, op_data in enumerate(operations_data):
                         op_id = f"{job_id_to_adjust}-OP{i+1:02d}"
                         predecessors = [f"{job_id_to_adjust}-OP{i:02d}"] if i > 0 else []
-                        new_op = Operation(id=op_id, machine_id=op_data["machine_id"], processing_time=op_data["processing_time"], predecessors=predecessors)
+                        new_op = Operation(id=op_id, machine_groups=op_data["machine_group_id"], processing_time=op_data["processing_time"], predecessors=predecessors)
                         new_operations.append(new_op)
                     
                     job_to_adjust.operation_list = new_operations
                     llm_response["explanation"] += f"\nSuccessfully adjusted Job ID: {job_id_to_adjust}"
-                    
-        # elif action == "modify_job":
-        #     job_id_to_modify = parameters.get("job_id")
-
-        #     new_priority = parameters.get("priority")
-        #     new_job_name = parameters.get("job_name")
-        #     if new_priority is not None:
-        #         job_to_modify.priority = new_priority
-        #     if new_job_name is not None:
-        #         job_to_modify.name = new_job_name
-
-        #     if not job_id_to_modify or not isinstance(new_priority, int):
-        #         raise HTTPException(status_code=400, detail="LLM response missing 'job_id' or 'priority' for modify action.")
-
-        #     job_to_modify = next((job for job in problem_data["jobs"] if job.id == job_id_to_modify), None)
-
-        #     if not job_to_modify:
-        #         llm_response["explanation"] += f"\nWarning: Job ID '{job_id_to_modify}' not found for modification."
-        #     else:
-        #         job_to_modify.priority = new_priority
-        #         llm_response["explanation"] += f"\nSuccessfully changed priority for Job ID: {job_id_to_modify} to {new_priority}."
 
         elif action == "modify_job":
             job_id_to_modify = parameters.get("job_id")
@@ -209,44 +156,36 @@ def interpret_user_command(user_command: UserCommand, problem_id: str = "problem
                 if not updated:
                      llm_response["explanation"] += f"\nNo new properties provided for {job_id_to_modify}."
 
-        elif action == "add_machine":
-            machine_name = parameters.get("machine_name")
-            if not machine_name:
-                raise HTTPException(status_code=400, detail="LLM response missing 'name' for add_machine action.")
-
-            # Generate a new, unique Machine ID
-            existing_ids = {int(m.id[1:]) for m in problem_data["machines"]}
+        elif action == "add_machine_group":
+            name = parameters.get("machine_name") # Use consistent 'machine_name'
+            quantity = parameters.get("quantity")
+            if not name or not isinstance(quantity, int) or quantity < 1:
+                raise HTTPException(status_code=400, detail="LLM response missing name or valid quantity.")
+            
+            existing_ids = {int(mg.id[2:]) for mg in problem_data["machines"]}
             new_id_num = max(existing_ids) + 1 if existing_ids else 1
-            new_machine_id = f"M{new_id_num:03d}"
+            new_mg_id = f"MG{new_id_num:03d}"
+            
+            new_machine_group = MachineGroup(id=new_mg_id, name=name, quantity=quantity)
+            problem_data["machine_groups"].append(new_machine_group)
+            llm_response["explanation"] += f"\nAdded group '{name}' as ID {new_mg_id}."
 
-            new_machine = Machine(id=new_machine_id, name=machine_name, availability=True)
-            problem_data["machines"].append(new_machine)
-            llm_response["explanation"] += f"\nSuccessfully added '{machine_name}' as Machine ID: {new_machine_id}"
-
-        elif action == "modify_machine":
-            machine_id = parameters.get("machine_id")
-            if not machine_id:
-                raise HTTPException(status_code=400, detail="LLM response missing 'machine_id' for modify_machine action.")
-
-            machine_to_modify = next((m for m in problem_data["machines"] if m.id == machine_id), None)
-
-            if not machine_to_modify:
-                llm_response["explanation"] += f"\nWarning: Machine ID '{machine_id}' not found for modification."
+        elif action == "modify_machine_group":
+            mg_id = parameters.get("machine_group_id")
+            if not mg_id:
+                raise HTTPException(status_code=400, detail="LLM response missing machine_group_id.")
+            
+            mg_to_modify = next((mg for mg in problem_data["machine_groups"] if mg.id == mg_id), None)
+            if not mg_to_modify:
+                llm_response["explanation"] += f"\nWarning: Group '{mg_id}' not found."
             else:
-                updated = False
-                availability = parameters.get("availability")
                 new_name = parameters.get("machine_name")
-                if availability is not None and isinstance(availability, bool):
-                    machine_to_modify.availability = availability
-                    status = "available" if availability else "unavailable"
-                    llm_response["explanation"] += f"\nSet machine {machine_id} to {status}."
-                    updated = True
-                if new_name is not None:
-                    machine_to_modify.name = new_name
-                    llm_response["explanation"] += f"\nSet name for machine {machine_id} to '{new_name}'."
-                    updated = True
-                if not updated:
-                    llm_response["explanation"] += f"\nNo new properties provided for {machine_id}."
+                new_quantity = parameters.get("quantity")
+                if new_name:
+                    mg_to_modify.name = new_name
+                if new_quantity is not None and isinstance(new_quantity, int) and new_quantity >= 0:
+                    mg_to_modify.quantity = new_quantity
+                llm_response["explanation"] += f"\nModified group {mg_id}."
 
         elif action == "swap_operations":
             job_id = parameters.get("job_id")
@@ -285,10 +224,8 @@ def reset_problem_state(problem_id: str = "problem_1"):
     """
     if problem_id not in TEST_PROBLEMS:
         raise HTTPException(status_code=404, detail="Problem not found")
-
-    # Re-initialize the state for the specified problem using a deep copy
     app_state[problem_id] = {
         "jobs": [Job(**j) for j in TEST_PROBLEMS[problem_id]["jobs"]],
-        "machines": [Machine(**m) for m in TEST_PROBLEMS[problem_id]["machines"]],
+        "machine_groups": [MachineGroup(**mg) for mg in TEST_PROBLEMS[problem_id]["machines"]],
     }
     return {"message": f"Problem '{problem_id}' has been reset successfully."}

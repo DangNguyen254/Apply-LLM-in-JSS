@@ -8,8 +8,8 @@ public class ScheduledOperation{
     @JsonProperty("operation_id")
     private String operationId;
 
-    @JsonProperty("machine_id")
-    private String machineId;
+    @JsonProperty("machine_instance_id")
+    private String machineInstanceId;
 
     @JsonProperty("start_time")
     private int startTime;
@@ -21,10 +21,10 @@ public class ScheduledOperation{
 
     }
 
-    public ScheduledOperation(String jobId, String operationId, String machineId, int startTime, int endTime){
+    public ScheduledOperation(String jobId, String operationId, String machineInstanceId, int startTime, int endTime){
         this.setEndTime(endTime);
         this.setJobId(jobId);
-        this.setMachineId(machineId);
+        this.setMachineInstanceId(machineInstanceId);
         this.setOperationId(operationId);
         this.setStartTime(startTime);
     }
@@ -35,8 +35,8 @@ public class ScheduledOperation{
     public String getJobId() {
         return jobId;
     }
-    public String getMachineId() {
-        return machineId;
+    public String getMachineInstanceId() {
+        return machineInstanceId;
     }
     public String getOperationId() {
         return operationId;
@@ -51,8 +51,8 @@ public class ScheduledOperation{
     public void setJobId(String jobId) {
         this.jobId = jobId;
     }
-    public void setMachineId(String machineId) {
-        this.machineId = machineId;
+    public void setMachineInstanceId(String machineInstanceId) {
+        this.machineInstanceId = machineInstanceId;
     }
     public void setOperationId(String operationId) {
         this.operationId = operationId;
