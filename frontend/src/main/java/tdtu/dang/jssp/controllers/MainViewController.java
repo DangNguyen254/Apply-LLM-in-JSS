@@ -11,6 +11,7 @@ import tdtu.dang.jssp.services.ApiClient;
 import tdtu.dang.jssp.views.GanttChart;
 
 import java.io.IOException;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 
@@ -30,6 +31,9 @@ public class MainViewController {
     private final ApiClient apiClient = new ApiClient();
     private final String problemId = "problem_1";
 
+    // Stores the conversation state
+    private List<Map<String, Object>> conversationHistory;
+
     @FXML
     public void initialize() {
         ganttChart = new GanttChart();
@@ -39,8 +43,8 @@ public class MainViewController {
         AnchorPane.setRightAnchor(ganttChart, 0.0);
         ganttChartPane.getChildren().add(ganttChart);
 
-        // Add an EventFilter to the promptInput to handle Tab key presses.
-        // This is more reliable than an EventHandler for overriding default behavior.
+        this.conversationHistory = new ArrayList<>();
+
         promptInput.addEventFilter(KeyEvent.KEY_PRESSED, event -> {
             if (event.getCode() == KeyCode.TAB) {
                 // Consume the event to prevent the TextArea from inserting a '\t' character.
@@ -50,9 +54,10 @@ public class MainViewController {
             }
         });
 
+        // Load initial data
         refreshAllData();
-        
-        // Request focus on the prompt area after the UI is fully loaded.
+
+        // Request focus on the prompt area
         Platform.runLater(() -> promptInput.requestFocus());
     }
 
@@ -63,7 +68,7 @@ public class MainViewController {
             updateJobTreeView(jobs);
             updateMachineGroupDisplay(machineGroups);
         } catch (IOException | InterruptedException e) {
-            statusDisplayArea.appendText("Error: Could not load initial problem data.\n");
+            statusDisplayArea.appendText("Error: Could not load problem data.\n");
             e.printStackTrace();
         }
     }
@@ -100,8 +105,6 @@ public class MainViewController {
 
     @FXML
     private void handlePromptKeyPress(KeyEvent event) {
-        // This handler now only needs to worry about the Enter key for submission.
-        // The Tab key logic is handled by the EventFilter in the initialize() method.
         if (event.getCode() == KeyCode.ENTER && !event.isShiftDown()) {
             event.consume();
             handleSubmitButton();
@@ -117,18 +120,30 @@ public class MainViewController {
         }
         promptInput.clear();
         statusDisplayArea.appendText("\n> " + command + "\n");
+        
         try {
-            LLMResponse llmResponse = apiClient.interpretCommand(command, this.problemId);
-            statusDisplayArea.appendText(llmResponse.getExplanation() + "\n");
+            // Pass the current history to the API client
+            OrchestratorResponse llmResponse = apiClient.interpretCommand(command, this.problemId, this.conversationHistory);
 
-            String action = llmResponse.getAction();
+            // Update the local history with the new history from the response
+            this.conversationHistory = llmResponse.getHistory();
+
+            // Display the final text explanation
+            statusDisplayArea.appendText(llmResponse.getExplanation() + "\n");
             
-            if ("solve".equals(action)) {
-                statusDisplayArea.appendText("Solving problem\n");
-                handleSolveButton();
-            } else if (!"error".equals(action)) {
-                statusDisplayArea.appendText("Refreshing data...\n");
-                refreshAllData();
+            // Refresh the Job and Machine lists to reflect any changes
+            statusDisplayArea.appendText("Refreshing data lists...\n");
+            refreshAllData();
+
+            // Check if the response included a schedule
+            Schedule schedule = llmResponse.getSchedule();
+            if (schedule != null) {
+                statusDisplayArea.appendText("Orchestrator solved and returned a new schedule. Displaying...\n");
+                // We need the *current* jobs and machines to display the chart correctly
+                List<Job> currentJobs = apiClient.getJobs(problemId);
+                List<MachineGroup> currentMachineGroups = apiClient.getMachineGroups(problemId);
+                // Call the existing display helper method
+                displayScheduleResults(schedule, currentJobs, currentMachineGroups);
             }
 
         } catch (IOException | InterruptedException e) {
@@ -148,30 +163,46 @@ public class MainViewController {
     @FXML
     private void handleSolveButton() {
         try {
-            statusDisplayArea.appendText("Solving problem: " + problemId + "\n");
+            statusDisplayArea.appendText("Solving current problem state: " + problemId + "\n");
             Schedule schedule = apiClient.solveProblem(problemId);
             List<Job> jobs = apiClient.getJobs(problemId);
             List<MachineGroup> machineGroups = apiClient.getMachineGroups(problemId);
             
-            statusDisplayArea.appendText("Solution found! Makespan: " + schedule.getMakespan() + "\n");
-            ganttChart.displaySchedule(schedule, jobs, machineGroups);
-            
-            StringBuilder resultText = new StringBuilder();
-            resultText.append(String.format("Makespan: %d\n", schedule.getMakespan()));
-            resultText.append(String.format("Average Job Flow Time: %.2f\n\n", schedule.getAverageFlowTime()));
-            resultText.append("Machine Utilization:\n");
-            if (schedule.getMachineUtilization() != null) {
-                schedule.getMachineUtilization().entrySet().stream()
-                    .sorted(Map.Entry.comparingByKey())
-                    .forEach(entry -> resultText.append(String.format("- %s: %.2f%%\n", entry.getKey(), entry.getValue() * 100)));
+            if (schedule == null) {
+                statusDisplayArea.appendText("Solver failed to find a solution for the current state.\n");
+                ganttChart.clear();
+                resultDisplayArea.clear();
+                return;
             }
-            resultDisplayArea.setText(resultText.toString());
+
+            statusDisplayArea.appendText("Solution found! Makespan: " + schedule.getMakespan() + "\n");
+            
+            // Display the schedule results (Gantt Chart and KPIs)
+            displayScheduleResults(schedule, jobs, machineGroups);
 
         } catch (IOException | InterruptedException e) {
             e.printStackTrace();
             statusDisplayArea.appendText("Error: " + e.getMessage() + "\n");
         }
     }
+
+    private void displayScheduleResults(Schedule schedule, List<Job> jobs, List<MachineGroup> machineGroups) {
+        // Draw Gantt Chart
+        ganttChart.displaySchedule(schedule, jobs, machineGroups);
+        
+        // Display KPIs
+        StringBuilder resultText = new StringBuilder();
+        resultText.append(String.format("Makespan: %d\n", schedule.getMakespan()));
+        resultText.append(String.format("Average Job Flow Time: %.2f\n\n", schedule.getAverageFlowTime()));
+        resultText.append("Machine Utilization:\n");
+        if (schedule.getMachineUtilization() != null) {
+            schedule.getMachineUtilization().entrySet().stream()
+                .sorted(Map.Entry.comparingByKey())
+                .forEach(entry -> resultText.append(String.format("- %s: %.2f%%\n", entry.getKey(), entry.getValue() * 100)));
+        }
+        resultDisplayArea.setText(resultText.toString());
+    }
+
 
     @FXML
     private void handleSolveButtonKeyPress(KeyEvent event) {
@@ -186,10 +217,18 @@ public class MainViewController {
         try {
             statusDisplayArea.appendText("Resetting problem state...\n");
             apiClient.resetProblem(problemId);
+            
+            // Clear all displays
             ganttChart.clear();
             resultDisplayArea.clear();
             promptInput.clear();
+            
+            // Also clear the conversation history on reset
+            this.conversationHistory.clear();
+
+            // Refresh the Job/Machine lists
             refreshAllData();
+            
             statusDisplayArea.appendText("Problem has been reset to its original state.\n");
         } catch (IOException | InterruptedException e) {
             e.printStackTrace();

@@ -2,7 +2,8 @@ package tdtu.dang.jssp.services;
 
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import tdtu.dang.jssp.models.*; // Import all your models
+import com.fasterxml.jackson.databind.node.ObjectNode;
+import tdtu.dang.jssp.models.*;
 
 import java.io.IOException;
 import java.net.URI;
@@ -10,6 +11,7 @@ import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.util.List;
+import java.util.Map;
 
 public class ApiClient{
 
@@ -71,25 +73,25 @@ public class ApiClient{
             throw new IOException("Solver failed: " + response.body());
         }
 
-        // We don't need TypeReference because Schedule is not a generic list
         Schedule schedule = objectMapper.readValue(response.body(), Schedule.class);
         return schedule;
     }
 
-    public LLMResponse interpretCommand(String commandText, String problemId) throws IOException, InterruptedException {
+    // Send history and receive OrchestratorResponse
+    public OrchestratorResponse interpretCommand(String commandText, String problemId, List<Map<String, Object>> history) throws IOException, InterruptedException {
         String url = BASE_URL + "/interpret?problem_id=" + problemId;
 
-        String requestBody = objectMapper.createObjectNode()
-                .put("command", commandText)
-                .toString();
-                
-        // Debug print
-        // System.out.println(">>> Sending Request Body: " + requestBody);
+        // Create the request body JSON
+        ObjectNode requestBody = objectMapper.createObjectNode();
+        requestBody.put("command", commandText);
+        requestBody.set("history", objectMapper.valueToTree(history));
+        
+        String requestBodyString = objectMapper.writeValueAsString(requestBody);
 
         HttpRequest request = HttpRequest.newBuilder()
                 .uri(URI.create(url))
                 .header("Content-Type", "application/json")
-                .POST(HttpRequest.BodyPublishers.ofString(requestBody))
+                .POST(HttpRequest.BodyPublishers.ofString(requestBodyString))
                 .build();
 
         HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
@@ -98,7 +100,8 @@ public class ApiClient{
             throw new IOException("API Error " + response.statusCode() + ": " + response.body());
         }
 
-        LLMResponse llmResponse = objectMapper.readValue(response.body(), LLMResponse.class);
+        // Parse response model
+        OrchestratorResponse llmResponse = objectMapper.readValue(response.body(), OrchestratorResponse.class);
         return llmResponse;
     }
 
