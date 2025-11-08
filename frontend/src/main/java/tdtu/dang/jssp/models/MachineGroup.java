@@ -1,5 +1,7 @@
 package tdtu.dang.jssp.models;
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 
+@JsonIgnoreProperties(ignoreUnknown = true)
 public class MachineGroup {
     private String id;
     private String name;

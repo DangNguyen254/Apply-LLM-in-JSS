@@ -1,6 +1,8 @@
 package tdtu.dang.jssp.models;
 import com.fasterxml.jackson.annotation.JsonProperty;
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 
+@JsonIgnoreProperties(ignoreUnknown = true)
 public class ScheduledOperation{
     @JsonProperty("job_id")
     private String jobId;

@@ -29,7 +29,9 @@ public class MainViewController {
 
     private GanttChart ganttChart;
     private final ApiClient apiClient = new ApiClient();
-    private final String problemId = "problem_1";
+    
+    // The problemId is no longer needed, it's managed by the server session.
+    // private final String problemId = "problem_1"; 
 
     // Stores the conversation state
     private List<Map<String, Object>> conversationHistory;
@@ -54,17 +56,39 @@ public class MainViewController {
             }
         });
 
-        // Load initial data
-        refreshAllData();
+        // --- NEW LOGIN AND DATA LOADING ---
+        // We must log in before we can do anything else.
+        // For a "real" app, you would show a login screen.
+        // For this enterprise project, we'll auto-login as the default 'admin' user.
+        try {
+            statusDisplayArea.setText("Authenticating with server...\n");
+            String username = apiClient.login("admin", "admin123");
+            statusDisplayArea.appendText("Login successful. Welcome, " + username + ".\n");
+            statusDisplayArea.appendText("Loading 'Live Data' scenario...\n");
+            
+            // Load initial data *after* logging in
+            refreshAllData();
+            statusDisplayArea.appendText("Data loaded.\n");
 
+        } catch (Exception e) {
+            statusDisplayArea.appendText("FATAL ERROR: Could not log in or load data.\n");
+            statusDisplayArea.appendText(e.getMessage() + "\n");
+            // Disable controls if login fails
+            promptInput.setDisable(true);
+            submitButton.setDisable(true);
+            solveButton.setDisable(true);
+            resetButton.setDisable(true);
+        }
+        
         // Request focus on the prompt area
         Platform.runLater(() -> promptInput.requestFocus());
     }
 
     private void refreshAllData() {
         try {
-            List<Job> jobs = apiClient.getJobs(problemId);
-            List<MachineGroup> machineGroups = apiClient.getMachineGroups(problemId);
+            // All API calls no longer need problemId
+            List<Job> jobs = apiClient.getJobs();
+            List<MachineGroup> machineGroups = apiClient.getMachineGroups();
             updateJobTreeView(jobs);
             updateMachineGroupDisplay(machineGroups);
         } catch (IOException | InterruptedException e) {
@@ -73,6 +97,7 @@ public class MainViewController {
         }
     }
 
+    // This method is unchanged
     private void updateJobTreeView(List<Job> jobs) {
         TreeItem<String> rootItem = new TreeItem<>("Jobs");
         rootItem.setExpanded(true);
@@ -95,6 +120,7 @@ public class MainViewController {
         jobTreeView.setRoot(rootItem);
     }
 
+    // This method is unchanged
     private void updateMachineGroupDisplay(List<MachineGroup> machineGroups) {
         StringBuilder sb = new StringBuilder();
         for (MachineGroup group : machineGroups) {
@@ -123,7 +149,8 @@ public class MainViewController {
         
         try {
             // Pass the current history to the API client
-            OrchestratorResponse llmResponse = apiClient.interpretCommand(command, this.problemId, this.conversationHistory);
+            // No problemId is needed
+            OrchestratorResponse llmResponse = apiClient.interpretCommand(command, this.conversationHistory);
 
             // Update the local history with the new history from the response
             this.conversationHistory = llmResponse.getHistory();
@@ -140,8 +167,9 @@ public class MainViewController {
             if (schedule != null) {
                 statusDisplayArea.appendText("Orchestrator solved and returned a new schedule. Displaying...\n");
                 // We need the *current* jobs and machines to display the chart correctly
-                List<Job> currentJobs = apiClient.getJobs(problemId);
-                List<MachineGroup> currentMachineGroups = apiClient.getMachineGroups(problemId);
+                // No problemId is needed
+                List<Job> currentJobs = apiClient.getJobs();
+                List<MachineGroup> currentMachineGroups = apiClient.getMachineGroups();
                 // Call the existing display helper method
                 displayScheduleResults(schedule, currentJobs, currentMachineGroups);
             }
@@ -163,10 +191,11 @@ public class MainViewController {
     @FXML
     private void handleSolveButton() {
         try {
-            statusDisplayArea.appendText("Solving current problem state: " + problemId + "\n");
-            Schedule schedule = apiClient.solveProblem(problemId);
-            List<Job> jobs = apiClient.getJobs(problemId);
-            List<MachineGroup> machineGroups = apiClient.getMachineGroups(problemId);
+            statusDisplayArea.appendText("Solving current active scenario...\n");
+            // No problemId is needed
+            Schedule schedule = apiClient.solveProblem();
+            List<Job> jobs = apiClient.getJobs();
+            List<MachineGroup> machineGroups = apiClient.getMachineGroups();
             
             if (schedule == null) {
                 statusDisplayArea.appendText("Solver failed to find a solution for the current state.\n");
@@ -186,6 +215,7 @@ public class MainViewController {
         }
     }
 
+    // This method is unchanged
     private void displayScheduleResults(Schedule schedule, List<Job> jobs, List<MachineGroup> machineGroups) {
         // Draw Gantt Chart
         ganttChart.displaySchedule(schedule, jobs, machineGroups);
@@ -214,25 +244,26 @@ public class MainViewController {
 
     @FXML
     private void handleResetButton() {
+        statusDisplayArea.appendText("Resetting database to default...\n");
+        
         try {
-            statusDisplayArea.appendText("Resetting problem state...\n");
-            apiClient.resetProblem(problemId);
+            // This tool now resets the entire DB and returns a new session token
+            String newSessionToken = apiClient.resetProblem();
+            statusDisplayArea.appendText("Database has been reset.\n");
+            statusDisplayArea.appendText("New session established.\n");
             
-            // Clear all displays
+            // Clear local state
+            this.conversationHistory.clear();
             ganttChart.clear();
             resultDisplayArea.clear();
             promptInput.clear();
             
-            // Also clear the conversation history on reset
-            this.conversationHistory.clear();
-
-            // Refresh the Job/Machine lists
+            // Reload the fresh data
             refreshAllData();
             
-            statusDisplayArea.appendText("Problem has been reset to its original state.\n");
         } catch (IOException | InterruptedException e) {
-            e.printStackTrace();
-            statusDisplayArea.appendText("Error: Failed to reset problem state.\n");
+            statusDisplayArea.appendText("FATAL: Could not reset database.\n");
+            statusDisplayArea.appendText(e.getMessage() + "\n");
         }
     }
 
