@@ -1,149 +1,333 @@
 /* --- Base and Root Styles --- */
 .root {
-    -fx-background-color: #2D3748; /* A dark slate gray */
-    -fx-font-family: "Segoe UI", Arial, sans-serif;
+    -fx-background-color: linear-gradient(to bottom, #1a1d29, #0f1419);
+    -fx-font-family: "Segoe UI", "SF Pro Display", -apple-system, sans-serif;
     -fx-font-size: 14px;
-    /* Also define the standard property for compatibility */
-    background-color: #2D3748;
-    font-family: "Segoe UI", Arial, sans-serif;
-    font-size: 14px;
+}
+
+/* --- Menu Bar --- */
+.menu-bar {
+    -fx-background-color: #1e2330;
+    -fx-border-color: #2a3142;
+    -fx-border-width: 0 0 1 0;
+}
+
+.menu-bar .label {
+    -fx-text-fill: #e4e7eb;
+}
+
+.menu-bar .menu:hover {
+    -fx-background-color: #2a3142;
+}
+
+.menu-item {
+    -fx-background-color: #1e2330;
+}
+
+.menu-item:hover {
+    -fx-background-color: #2563eb;
+}
+
+.menu-item .label {
+    -fx-text-fill: #e4e7eb;
 }
 
 /* --- Labels and Text --- */
 .label {
-    -fx-text-fill: #E2E8F0; /* Light gray text for readability */
-    -fx-font-weight: bold;
-    /* Also define the standard property for compatibility */
-    color: #E2E8F0;
-    font-weight: bold;
+    -fx-text-fill: #f1f5f9;
+    -fx-font-weight: 600;
 }
 
 .chart-title {
-    -fx-font-size: 24px;
-    -fx-text-fill: #FFFFFF;
-    /* Also define the standard property for compatibility */
-    font-size: 24px;
-    color: #FFFFFF;
+    -fx-font-size: 26px;
+    -fx-font-weight: 700;
+    -fx-text-fill: #ffffff;
+    -fx-effect: dropshadow(gaussian, rgba(37, 99, 235, 0.4), 8, 0, 0, 2);
 }
 
 /* --- Buttons --- */
 .button {
-    -fx-background-color: #4A5568;
+    -fx-background-color: linear-gradient(to bottom, #2563eb, #1d4ed8);
     -fx-text-fill: white;
-    -fx-font-weight: bold;
-    -fx-background-radius: 5;
-    -fx-border-radius: 5;
-    /* Also define the standard property for compatibility */
-    background-color: #4A5568;
-    color: white;
-    font-weight: bold;
-    border-radius: 5px;
+    -fx-font-weight: 600;
+    -fx-font-size: 13px;
+    -fx-background-radius: 8;
+    -fx-border-radius: 8;
+    -fx-padding: 8 16 8 16;
+    -fx-cursor: hand;
+    -fx-effect: dropshadow(gaussian, rgba(37, 99, 235, 0.3), 6, 0, 0, 2);
 }
 
 .button:hover {
-    -fx-background-color: #2C5282; /* A darker blue on hover */
-    /* Also define the standard property for compatibility */
-    background-color: #2C5282;
+    -fx-background-color: linear-gradient(to bottom, #1d4ed8, #1e40af);
+    -fx-effect: dropshadow(gaussian, rgba(37, 99, 235, 0.5), 10, 0, 0, 3);
+    -fx-scale-y: 1.02;
+    -fx-scale-x: 1.02;
+}
+
+.button:pressed {
+    -fx-background-color: linear-gradient(to bottom, #1e40af, #1e3a8a);
+    -fx-translate-y: 1;
+    -fx-effect: dropshadow(gaussian, rgba(37, 99, 235, 0.2), 4, 0, 0, 1);
+}
+
+.button:focused {
+    -fx-border-color: #60a5fa;
+    -fx-border-width: 2px;
+    -fx-border-insets: -2;
+    -fx-border-radius: 8;
+    -fx-effect: dropshadow(gaussian, rgba(96, 165, 250, 0.6), 12, 0, 0, 0);
+}
+
+/* Special styling for Submit button */
+#submitButton {
+    -fx-background-color: linear-gradient(to bottom, #10b981, #059669);
+}
+
+#submitButton:hover {
+    -fx-background-color: linear-gradient(to bottom, #059669, #047857);
+    -fx-effect: dropshadow(gaussian, rgba(16, 185, 129, 0.5), 10, 0, 0, 3);
+}
+
+/* Special styling for Reset button */
+#resetButton {
+    -fx-background-color: linear-gradient(to bottom, #ef4444, #dc2626);
+}
+
+#resetButton:hover {
+    -fx-background-color: linear-gradient(to bottom, #dc2626, #b91c1c);
+    -fx-effect: dropshadow(gaussian, rgba(239, 68, 68, 0.5), 10, 0, 0, 3);
 }
 
 /* --- Text Areas and Input Fields --- */
 .text-area {
-    -fx-background-color: #1A202C;
-    -fx-text-fill: #CBD5E0;
-    -fx-border-color: #4A5568;
-    -fx-border-width: 1;
-    -fx-border-radius: 5;
+    -fx-background-color: #1e2330;
+    -fx-text-fill: #e4e7eb;
+    -fx-border-color: #2a3142;
+    -fx-border-width: 1.5;
+    -fx-border-radius: 8;
+    -fx-background-radius: 8;
     -fx-background-insets: 0;
-    /* Also define the standard property for compatibility */
-    background-color: #1A202C;
-    color: #CBD5E0;
-    border: 1px solid #4A5568;
-    border-radius: 5px;
+    -fx-font-size: 13px;
+    -fx-padding: 8;
 }
 
 .text-area .content {
-    -fx-background-color: #1A202C;
-     /* Also define the standard property for compatibility */
-    background-color: #1A202C;
+    -fx-background-color: #1e2330;
+    -fx-background-radius: 8;
+}
+
+.text-area .scroll-pane {
+    -fx-background-color: transparent;
+}
+
+.text-area .scroll-pane .viewport {
+    -fx-background-color: transparent;
+}
+
+.text-area .scroll-pane .corner {
+    -fx-background-color: #1e2330;
+}
+
+.text-area:focused {
+    -fx-border-color: #2563eb;
+    -fx-border-width: 2px;
+    -fx-border-insets: -1;
+    -fx-effect: dropshadow(gaussian, rgba(37, 99, 235, 0.3), 8, 0, 0, 0);
 }
 
 .text-input {
-    -fx-prompt-text-fill: #718096;
+    -fx-prompt-text-fill: #64748b;
 }
 
+/* Scrollbars for text areas */
+.text-area .scroll-bar:vertical,
+.text-area .scroll-bar:horizontal {
+    -fx-background-color: transparent;
+}
+
+.text-area .scroll-bar .thumb {
+    -fx-background-color: #475569;
+    -fx-background-radius: 4;
+    -fx-border-radius: 4;
+}
+
+.text-area .scroll-bar .thumb:hover {
+    -fx-background-color: #64748b;
+}
+
+.text-area .scroll-bar .track {
+    -fx-background-color: #1e2330;
+    -fx-background-radius: 4;
+}
 
 /* --- Containers and Panes --- */
 .container-box {
-    -fx-background-color: #4A5568;
-    -fx-background-radius: 8;
-    -fx-padding: 10;
-    /* Also define the standard property for compatibility */
-    background-color: #4A5568;
-    border-radius: 8px;
-    padding: 10px;
+    -fx-background-color: #242938;
+    -fx-background-radius: 12;
+    -fx-padding: 16;
+    -fx-effect: dropshadow(gaussian, rgba(0, 0, 0, 0.4), 12, 0, 0, 4);
+    -fx-border-color: #2a3142;
+    -fx-border-width: 1;
+    -fx-border-radius: 12;
 }
 
 .gantt-chart-pane {
-    -fx-background-color: #4A5568; /* Match the container box */
-    /* Also define the standard property for compatibility */
-    background-color: #4A5568;
+    -fx-background-color: #1e2330;
+    -fx-background-radius: 12;
+    -fx-padding: 20;
 }
 
-
-/* --- TreeView (for job list) --- */
-.tree-view {
-    -fx-background-color: #1A202C;
-    -fx-border-color: #4A5568;
-}
-.tree-cell {
-    -fx-text-fill: #CBD5E0;
+/* --- ScrollPane --- */
+.scroll-pane {
     -fx-background-color: transparent;
+    -fx-border-color: #2a3142;
+    -fx-border-width: 1.5;
+    -fx-border-radius: 12;
+    -fx-background-radius: 12;
 }
+
+.scroll-pane .viewport {
+    -fx-background-color: #1e2330;
+}
+
+.scroll-pane .corner {
+    -fx-background-color: #1e2330;
+}
+
+.gantt-scroll-pane {
+    -fx-background-color: #1e2330;
+    -fx-border-color: #2a3142;
+    -fx-border-width: 1.5;
+    -fx-background-radius: 12;
+}
+
+.gantt-scroll-pane > .viewport {
+    -fx-background-color: #1e2330;
+}
+
+/* Scrollbar styling */
+.scroll-bar:vertical,
+.scroll-bar:horizontal {
+    -fx-background-color: #1e2330;
+}
+
+.scroll-bar .thumb {
+    -fx-background-color: #475569;
+    -fx-background-radius: 6;
+    -fx-border-radius: 6;
+}
+
+.scroll-bar .thumb:hover {
+    -fx-background-color: #64748b;
+}
+
+.scroll-bar .thumb:pressed {
+    -fx-background-color: #2563eb;
+}
+
+.scroll-bar .track {
+    -fx-background-color: #1e2330;
+    -fx-background-radius: 6;
+}
+
+.scroll-bar .increment-button,
+.scroll-bar .decrement-button {
+    -fx-background-color: transparent;
+    -fx-padding: 0;
+}
+
+/* --- TreeView --- */
+.tree-view {
+    -fx-background-color: #1e2330;
+    -fx-border-color: #2a3142;
+    -fx-border-width: 1.5;
+    -fx-border-radius: 8;
+    -fx-background-radius: 8;
+}
+
+.tree-cell {
+    -fx-text-fill: #e4e7eb;
+    -fx-background-color: transparent;
+    -fx-padding: 6 8 6 8;
+    -fx-font-size: 13px;
+}
+
 .tree-cell:filled:hover {
-    -fx-background-color: #2C5282;
+    -fx-background-color: rgba(37, 99, 235, 0.15);
+    -fx-background-radius: 6;
 }
+
 .tree-cell:filled:selected {
-    -fx-background-color: #3182CE;
+    -fx-background-color: #2563eb;
+    -fx-background-radius: 6;
+    -fx-text-fill: white;
+}
+
+.tree-cell:filled:selected:hover {
+    -fx-background-color: #1d4ed8;
+}
+
+.tree-cell .tree-disclosure-node {
+    -fx-background-color: #64748b;
+    -fx-shape: "M 0 0 L 6 4 L 0 8 Z";
+    -fx-padding: 4;
+}
+
+.tree-cell:expanded .tree-disclosure-node {
+    -fx-rotate: 90;
 }
 
 /* --- Gantt Chart Specific Styles --- */
 .axis-label {
     -fx-font-size: 11px;
-    -fx-fill: #E2E8F0; /* Lighter text for axis ticks */
+    -fx-fill: #cbd5e1;
+    -fx-font-weight: 500;
 }
 
 .machine-label {
     -fx-font-size: 14px;
-    -fx-font-weight: bold;
-    -fx-fill: #FFFFFF;
+    -fx-font-weight: 700;
+    -fx-fill: #ffffff;
+    -fx-effect: dropshadow(gaussian, rgba(0, 0, 0, 0.4), 4, 0, 0, 1);
 }
 
-.gantt-chart-pane {
-    -fx-background-color: #1A202C;
-    background-color: #1A202C;
+/* --- BorderPane styling --- */
+.border-pane {
+    -fx-background-color: transparent;
 }
 
-.gantt-scroll-pane {
-    -fx-background-color: #1A202C;
-    background-color: #1A202C;
-}
-.gantt-scroll-pane > .viewport {
-    -fx-background-color: #1A202C;
-    background-color: #1A202C;
+/* --- VBox and HBox subtle improvements --- */
+.vbox, .hbox {
+    -fx-background-color: transparent;
 }
 
-/* Style for any button that has keyboard focus. */
-.button:focused {
-    -fx-border-color: #0096C7; /* A bright, noticeable blue */
-    -fx-border-width: 2px;
-    -fx-border-insets: -1;
-    -fx-border-radius: 5;
-    -fx-effect: dropshadow(three-pass-box, rgba(2, 48, 71, 0.5), 10, 0, 0, 0); /* A subtle outer glow */
+/* --- Improve overall spacing and visual rhythm --- */
+.spacing-small {
+    -fx-spacing: 5;
 }
 
-/* Consistent focus style for the text area. */
-.text-area:focused {
-    -fx-border-color: #0096C7;
-    -fx-border-width: 2px;
-    -fx-border-insets: -1;
+.spacing-medium {
+    -fx-spacing: 10;
+}
+
+.spacing-large {
+    -fx-spacing: 15;
+}
+
+/* --- Status indicators (can be used programmatically) --- */
+.status-success {
+    -fx-text-fill: #10b981;
+}
+
+.status-error {
+    -fx-text-fill: #ef4444;
+}
+
+.status-warning {
+    -fx-text-fill: #f59e0b;
+}
+
+.status-info {
+    -fx-text-fill: #3b82f6;
 }
