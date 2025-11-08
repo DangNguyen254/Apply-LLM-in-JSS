@@ -2,8 +2,7 @@ import os
 import json
 import google.generativeai as genai
 from dotenv import load_dotenv
-from google.generativeai.types import FunctionDeclaration, Tool
-from ..models.jssp_model import Job, MachineGroup
+from google.generativeai.types import FunctionDeclaration, Tool, GenerationConfig
 from typing import Dict, Any, List, Optional
 import traceback
 
@@ -13,66 +12,83 @@ api_key = os.getenv("GOOGLE_API_KEY")
 if api_key:
     genai.configure(api_key=api_key)
 
-# Tool Schemas (Function Declarations)
+# --- Tool Schemas (All Unchanged) ---
 
-# Define schema for solve_schedule
-solve_schedule = FunctionDeclaration(
-    name="solve_schedule",
-    description="Runs the Job Shop Scheduling solver on the current problem state and returns the schedule KPIs.",
+get_active_scenario = FunctionDeclaration(
+    name="get_active_scenario",
+    description="Gets the details (ID and Name) of the user's currently active scenario. This is typically 'Live Data'. Call this first in a 'what-if' plan.",
+    parameters={"type": "object", "properties": {}}
+)
+
+select_scenario = FunctionDeclaration(
+    name="select_scenario",
+    description="Selects one of the user's scenarios to make it the active one for all other tools. This is used by the assistant to silently switch contexts, e.g., into a temporary 'what-if' scenario or back to 'Live Data'.",
     parameters={
         "type": "object",
-        "properties": {} # No parameters needed for the current implementation
+        "properties": {"scenario_id": {"type": "integer"}},
+        "required": ["scenario_id"]
     }
+)
+
+create_scenario = FunctionDeclaration(
+    name="create_scenario",
+    description="Creates a new 'what-if' scenario by copying an existing one. Returns the new scenario's details, including its ID.",
+    parameters={
+        "type": "object",
+        "properties": {
+            "new_scenario_name": {"type": "string", "description": "e.g., 'temp-what-if-breakdown'"},
+            "base_scenario_id": {"type": "integer", "description": "The ID of the scenario to copy from (e.g., the 'Live Data' scenario)."}
+        },
+        "required": ["new_scenario_name", "base_scenario_id"]
+    }
+)
+
+delete_scenario = FunctionDeclaration(
+    name="delete_scenario",
+    description="Deletes a temporary 'what-if' scenario. This CANNOT be used to delete the 'Live Data' scenario.",
+    parameters={
+        "type": "object",
+        "properties": {"scenario_id": {"type": "integer"}},
+        "required": ["scenario_id"]
+    }
+)
+
+solve_schedule = FunctionDeclaration(
+    name="solve_schedule",
+    description="Runs the solver on the *active scenario*, saves the result, and returns KPIs.",
+    parameters={"type": "object", "properties": {}}
 )
 
 simulate_solve = FunctionDeclaration(
     name="simulate_solve",
-    description="Runs the solver for a 'what-if' scenario WITHOUT saving the result. Use this for simulations. Returns the same schedule KPIs as solve_schedule.",
-    parameters={
-        "type": "object",
-        "properties": {} # No parameters needed
-    }
+    description="Runs the solver on the *active scenario* WITHOUT saving the result. Use for 'what-if' simulations.",
+    parameters={"type": "object", "properties": {}}
 )
 
-# Define schema for get_schedule_kpis
 get_schedule_kpis = FunctionDeclaration(
     name="get_schedule_kpis",
-    description="Retrieves the Key Performance Indicators (KPIs) like makespan, average flow time, and machine utilization from the most recently computed schedule, without re-running the solver.",
-    parameters={
-        "type": "object",
-        "properties": {} # No parameters needed
-    }
+    description="Retrieves the KPIs from the last *saved* schedule for the *active scenario*.",
+    parameters={"type": "object", "properties": {}}
 )
 
-# Define schema for add_job
 add_job = FunctionDeclaration(
     name="add_job",
-    description="Adds a new job to the scheduling problem.",
+    description="Adds a new job to the *active scenario*.",
     parameters={
         "type": "object",
         "properties": {
-            "job_name": {
-                "type": "string",
-                "description": "Optional name for the new job. If not provided, a default name will be generated."
-            },
+            "job_name": {"type": "string", "description": "Optional name for the new job."},
             "priority": {
                 "type": "integer",
-                "description": "Optional priority for the job (integer, default is 1)."
+                "description": "Optional priority for the job. (Defaults to 1 if not provided)"
             },
             "operations": {
                 "type": "array",
-                "description": "A list of operations for the job, in sequence. Each operation must specify the machine group and processing time.",
                 "items": {
                     "type": "object",
                     "properties": {
-                        "machine_group_id": {
-                            "type": "string",
-                            "description": "The ID of the machine group required for this operation (e.g., 'MG001')."
-                        },
-                        "processing_time": {
-                            "type": "integer",
-                            "description": "The time required for this operation (positive integer)."
-                        }
+                        "machine_group_id": {"type": "string"},
+                        "processing_time": {"type": "integer"}
                     },
                     "required": ["machine_group_id", "processing_time"]
                 }
@@ -82,47 +98,30 @@ add_job = FunctionDeclaration(
     }
 )
 
-# Define schema for remove_job
 remove_job = FunctionDeclaration(
     name="remove_job",
-    description="Removes a specific job from the scheduling problem.",
+    description="Removes a job from the *active scenario*.",
     parameters={
         "type": "object",
-        "properties": {
-            "job_id": {
-                "type": "string",
-                "description": "The ID of the job to remove (e.g., 'J001')."
-            }
-        },
+        "properties": {"job_id": {"type": "string"}},
         "required": ["job_id"]
     }
 )
 
-# Define schema for adjust_job
 adjust_job = FunctionDeclaration(
     name="adjust_job",
-    description="Replaces the entire sequence of operations for an existing job. Use this for significant changes to a job's process.",
+    description="Replaces the operations list for a job in the *active scenario*.",
     parameters={
         "type": "object",
         "properties": {
-            "job_id": {
-                "type": "string",
-                "description": "The ID of the job to adjust (e.g., 'J001')."
-            },
+            "job_id": {"type": "string"},
             "operations": {
                 "type": "array",
-                "description": "The new list of operations for the job, in sequence. Each operation must specify the machine group and processing time.",
                 "items": {
                     "type": "object",
                     "properties": {
-                        "machine_group_id": {
-                            "type": "string",
-                            "description": "The ID of the machine group required for this operation (e.g., 'MG001')."
-                        },
-                        "processing_time": {
-                            "type": "integer",
-                            "description": "The time required for this operation (positive integer)."
-                        }
+                        "machine_group_id": {"type": "string"},
+                        "processing_time": {"type": "integer"}
                     },
                     "required": ["machine_group_id", "processing_time"]
                 }
@@ -132,179 +131,114 @@ adjust_job = FunctionDeclaration(
     }
 )
 
-# Define schema for modify_job
 modify_job = FunctionDeclaration(
     name="modify_job",
-    description="Modifies attributes (like priority or name) of an existing job without changing its operations.",
+    description="Modifies attributes of a job in the *active scenario*.",
     parameters={
         "type": "object",
         "properties": {
-            "job_id": {
-                "type": "string",
-                "description": "The ID of the job to modify (e.g., 'J001')."
-            },
-            "new_priority": {
-                "type": "integer",
-                "description": "The new priority value for the job (optional integer)."
-            },
-            "new_job_name": {
-                "type": "string",
-                "description": "The new name for the job (optional string)."
-            }
+            "job_id": {"type": "string"},
+            "new_priority": {"type": "integer"},
+            "new_job_name": {"type": "string"}
         },
         "required": ["job_id"]
     }
 )
 
-# Define schema for add_machine_group
 add_machine_group = FunctionDeclaration(
     name="add_machine_group",
-    description="Adds a new group of identical machines to the system.",
+    description="Adds a new machine group to the *active scenario*.",
     parameters={
         "type": "object",
         "properties": {
-            "name": {
-                "type": "string",
-                "description": "The descriptive name for the new machine group (e.g., 'Lathes', 'Milling Station B')."
-            },
-            "quantity": {
-                "type": "integer",
-                "description": "The number of identical machines available in this group (must be 1 or greater)."
-            }
+            "name": {"type": "string"},
+            "quantity": {"type": "integer"}
         },
         "required": ["name", "quantity"]
     }
 )
 
-# Define schema for modify_machine_group
 modify_machine_group = FunctionDeclaration(
     name="modify_machine_group",
-    description="Modifies the name or quantity of an existing machine group. Setting quantity to 0 can simulate a breakdown.",
+    description="Modifies a machine group in the *active scenario*.",
     parameters={
         "type": "object",
         "properties": {
-            "mg_id": { # Parameter name matches the python function
-                "type": "string",
-                "description": "The ID of the machine group to modify (e.g., 'MG001')."
-            },
-            "new_name": {
-                "type": "string",
-                "description": "The new name for the machine group (optional string)."
-            },
-            "new_quantity": {
-                "type": "integer",
-                "description": "The new number of machines in the group (optional integer, must be 0 or greater)."
-            }
+            "mg_id": {"type": "string"},
+            "new_name": {"type": "string"},
+            "new_quantity": {"type": "integer"}
         },
         "required": ["mg_id"]
     }
 )
 
-# Define schema for swap_operations
 swap_operations = FunctionDeclaration(
     name="swap_operations",
-    description="Swaps the position of two operations within the sequence of a specific job.",
+    description="Swaps two operations in a job in the *active scenario*.",
     parameters={
         "type": "object",
         "properties": {
-            "job_id": {
-                "type": "string",
-                "description": "The ID of the job whose operations should be swapped."
-            },
-            "idx1": { # Parameter name matches the python function
-                "type": "integer",
-                "description": "The zero-based index of the first operation to swap."
-            },
-            "idx2": { # Parameter name matches the python function
-                "type": "integer",
-                "description": "The zero-based index of the second operation to swap."
-            }
+            "job_id": {"type": "string"},
+            "idx1": {"type": "integer"},
+            "idx2": {"type": "integer"}
         },
         "required": ["job_id", "idx1", "idx2"]
     }
 )
 
-# Define schema for get_current_problem_state
 get_current_problem_state = FunctionDeclaration(
     name="get_current_problem_state",
-    description="Retrieves the complete current definition of the scheduling problem, including all jobs (with operations) and all machine groups (with quantities).",
-    parameters={"type": "object", "properties": {}} # No parameters needed
+    description="Retrieves all jobs and machines for the *active scenario*.",
+    parameters={"type": "object", "properties": {}}
 )
 
-# Define schema for get_job_details
 get_job_details = FunctionDeclaration(
     name="get_job_details",
-    description="Gets detailed information about a single specified job.",
+    description="Gets details for a single job in the *active scenario*.",
     parameters={
         "type": "object",
-        "properties": {
-            "job_id": {
-                "type": "string",
-                "description": "The ID of the job to retrieve details for."
-            }
-        },
+        "properties": {"job_id": {"type": "string"}},
         "required": ["job_id"]
     }
 )
 
-# Define schema for get_machine_group_details
 get_machine_group_details = FunctionDeclaration(
     name="get_machine_group_details",
-    description="Gets detailed information about a single specified machine group.",
+    description="Gets details for a single machine group in the *active scenario*.",
     parameters={
         "type": "object",
-        "properties": {
-            "machine_group_id": { # Parameter name matches the python function
-                "type": "string",
-                "description": "The ID of the machine group to retrieve details for."
-            }
-        },
+        "properties": {"machine_group_id": {"type": "string"}},
         "required": ["machine_group_id"]
     }
 )
 
-# Define schema for reset_problem
-reset_problem = FunctionDeclaration(
-    name="reset_problem",
-    description="Resets the current scheduling problem back to its original state (based on the loaded mock data). Useful for starting a new scenario analysis.",
-    parameters={"type": "object", "properties": {}} # No parameters needed currently
-)
-
-# Define schema for find_job_id_by_name
 find_job_id_by_name = FunctionDeclaration(
     name="find_job_id_by_name",
-    description="Looks up a Job ID based on a potentially partial job name provided by the user. Use this BEFORE calling tools that require a job_id if the user provides a name.",
+    description="Looks up a Job ID by name in the *active scenario*.",
     parameters={
         "type": "object",
-        "properties": {
-            "job_name": {
-                "type": "string",
-                "description": "The name or partial name of the job to find."
-            }
-        },
+        "properties": {"job_name": {"type": "string"}},
         "required": ["job_name"]
     }
 )
 
-# Define schema for find_machine_group_id_by_name
 find_machine_group_id_by_name = FunctionDeclaration(
     name="find_machine_group_id_by_name",
-    description="Looks up a Machine Group ID based on a potentially partial machine group name provided by the user. Use this BEFORE calling tools that require a machine_group_id (or mg_id) if the user provides a name.",
+    description="Looks up a Machine Group ID by name in the *active scenario*.",
     parameters={
         "type": "object",
-        "properties": {
-            "machine_name": {
-                "type": "string",
-                "description": "The name or partial name of the machine group to find."
-            }
-        },
+        "properties": {"machine_name": {"type": "string"}},
         "required": ["machine_name"]
     }
 )
 
-# Assemble Tool 
-# Create a Tool object containing all defined function declarations
+
+# Assemble Tool
 scheduling_tool = Tool(function_declarations=[
+    get_active_scenario,
+    select_scenario,
+    create_scenario,
+    delete_scenario,
     solve_schedule,
     simulate_solve,
     get_schedule_kpis,
@@ -318,83 +252,81 @@ scheduling_tool = Tool(function_declarations=[
     get_current_problem_state,
     get_job_details,
     get_machine_group_details,
-    reset_problem,
     find_job_id_by_name,
     find_machine_group_id_by_name,
 ])
 
-# Updated System Prompt 
+# System Prompt (Unchanged)
 system_prompt = """
-You are an expert assistant for a Job Shop Scheduling application using Machine Groups.
-Your role is to act as an orchestrator. You receive high-level user goals or questions related to scheduling, potentially involving scenario analysis ('what-if' questions).
-You must break down these goals into a step-by-step plan.
+You are an expert assistant for a multi-user, scenario-based Job Shop Scheduling application.
+Your role is to act as an orchestrator. You manage a user's workspace and help them analyze scheduling scenarios.
 
-**ID LOOKUP:** Users might refer to items by NAME.
-- If a user provides a job NAME (e.g., 'Job ABC') when an ID (e.g., 'J001') is needed, you MUST FIRST use the `find_job_id_by_name` tool to get its ID.
-- If a user provides a machine group NAME (e.g., 'Milling') when an ID (e.g., 'MG001') is needed, you MUST FIRST use the `find_machine_group_id_by_name` tool to get its ID.
-Use the ID returned by the lookup tool in subsequent tool calls (e.g., `modify_job`, `add_job` operations). If the lookup tool returns no ID (null/None), inform the user the name was not found and stop that part of the plan.
+**CONTEXT & WORKFLOW:**
+The user is already logged in and their "Live Data" scenario is active by default.
+All simple commands (like `add_job`, `solve_schedule`) apply directly to this active "Live Data" scenario.
+You do NOT need to ask the user to select a scenario at the start.
 
-To execute your plan, you have access to a set of tools. Determine which tool to use, call it with the correct parameters (using IDs obtained via lookup if necessary), and wait for the result.
-The tool results will be provided back to you. Use these results to inform the next step.
-
-- For simple questions (e.g., "how many jobs?"), use 'get_current_problem_state' first, then answer.
-- For KPIs of the *last* schedule, use 'get_schedule_kpis'.
-- If the user wants to solve and *save* the schedule (e.g., "solve the problem"), use `solve_schedule`.
+**ID LOOKUP:**
+- If a user provides a job NAME (e.g., 'Job ABC') when an ID (e.g., 'J001') is needed, you MUST FIRST use `find_job_id_by_name`.
+- If a user provides a machine group NAME (e.g., 'Milling') when an ID (e.g., 'MG001') is needed, you MUST FIRST use `find_machine_group_id_by_name`.
 
 **WHAT-IF SCENARIOS (SIMULATIONS):**
-If the user asks to "simulate", "what if", "what happens if", or "compare" a change:
-1. Get baseline KPIs first using `get_schedule_kpis`.
-2. Use lookup tools (e.g., `get_machine_group_details`) to find the **original values** of what will be changed (e.g., the current quantity of 'MG001').
-3. Use modification tools (e.g., `modify_machine_group`) to apply the temporary scenario change.
-4. Use `simulate_solve` to get the new KPIs. This tool does NOT save the schedule.
-5. **CRITICAL:** Call the modification tool *again* to **revert the change** back to its original value (e.g., `modify_machine_group` with the original quantity found in step 2).
-6. Formulate the final answer, comparing the baseline and new KPIs (e.g., "The original makespan was X. After simulating the breakdown, the new makespan is Y...").
+This is a key feature.
+1.  If the user asks a "what-if" or "simulate" question (e.g., "what if a machine breaks?"), your plan MUST be:
+    a. Call `get_active_scenario` to get the ID of the user's "Live Data" scenario (e.g., `base_scenario_id = 1`).
+    b. Call `create_scenario(new_scenario_name="temp-what-if-simulation", base_scenario_id=1)`. This tool will return the new scenario's details, including its ID.
+    c. Call `select_scenario(scenario_id=...)` to *silently* switch your context to this new temporary scenario.
+    d. Apply the simulation's modifications (e.g., `modify_machine_group(...)`) to this temporary scenario.
+    e. Call `simulate_solve()` to get the results (this does not save).
+    f. **CRITICAL:** Call `select_scenario(scenario_id=1)` to switch the context *back* to the user's "Live Data" scenario.
+    g. **CRITICAL:** Call `delete_scenario(scenario_id=...)` to clean up the temporary scenario (use the ID from step b).
+    h. Present the results to the user (e.g., "If you made that change, the makespan would be X.").
 
-Continue calling tools until you can fully answer the user's request.
-**IMPORTANT:** When you have all the information needed to answer the user, provide the final answer as text. Do NOT include a tool call and a text answer in the same turn. A text answer signifies the end of your plan.
-If you need to call a tool, respond ONLY with the function call request.
-If a request is unclear or cannot be mapped to tools, explain why.
+**MAKING A "WHAT-IF" CHANGE REAL:**
+If the user *likes* the simulation result and says "make that real," "save that," or "I want to do that":
+1.  The user's active scenario is already "Live Data" (because you switched back in step 'f').
+2.  Your plan is to *re-apply the modification* from the simulation, but this time to the "Live Data" scenario.
+3.  Call the modification tool (e.g., `modify_machine_group(...)`).
+4.  Call `solve_schedule()` (the *real* one) to save this new state.
+5.  Inform the user, "Done. I have applied that change to your 'Live Data' schedule."
+
+**IMPORTANT:**
+- Only respond with a tool call *or* a text answer, never both.
+- A text answer means your plan is finished for that turn.
 """
 
-
-def interpret_command(history: List[Dict[str, Any]], current_jobs: list[Job], machine_groups: list[MachineGroup]) -> Any:
+def interpret_command(history: List[Dict[str, Any]]) -> Any:
     """
     Interprets user command using the LLM with function calling capabilities.
-
-    Args:
-        history: The full conversation history (must not be empty).
-        current_jobs: Current list of Job objects (for context summary).
-        machine_groups: Current list of MachineGroup objects (for context summary).
-
-    Returns:
-        A dictionary containing either:
-        - The actual Content object from the LLM response (containing tool_call or final_answer text).
-        - {'error': str} if an error occurs during generation.
     """
     
-    # Context summary is added to the system prompt, not the history
-    state_summary = f"Current state: {len(current_jobs)} jobs, {len(machine_groups)} machine groups."
-    full_system_prompt = f"{system_prompt}\n\n{state_summary}"
-
     try:
-        model = genai.GenerativeModel(
-            'gemini-2.5-flash',
-            tools=[scheduling_tool],
-            system_instruction=full_system_prompt
+        config = GenerationConfig(
+            max_output_tokens=8192,
+            temperature=0.2 
         )
 
-        # Generate content using the history
-        response = model.generate_content(history)
+        # --- FIX 1: Use the full model identifier ---
+        model = genai.GenerativeModel(
+            'gemini-2.0-flash',
+            tools=[scheduling_tool],
+            system_instruction=system_prompt,
+        )
 
-        # Check for blocked response or lack of content
+        response = model.generate_content(
+            history,
+            generation_config=config,
+        )
+
         if not response.candidates or not response.candidates[0].content.parts:
             finish_reason = response.candidates[0].finish_reason if response.candidates else "Unknown"
             safety_ratings = response.candidates[0].safety_ratings if response.candidates else "Unknown"
             error_message = f"LLM response empty/blocked. Finish Reason: {finish_reason}. Safety: {safety_ratings}"
             print(f"Warning: {error_message}")
-            return {'error': "Could not get valid response from LLM."}
+            
+            # --- FIX 2: Return the *detailed* error message ---
+            return {'error': f"Could not get valid response from LLM. Reason: {finish_reason}"}
 
-        # Return the actual Content object for the orchestrator to process
         return response.candidates[0].content
 
     except Exception as e:
