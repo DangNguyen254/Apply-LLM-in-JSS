@@ -2,9 +2,6 @@
 
 A full-stack, multi-user scheduling application where a Google Gemini LLM acts as a stateful orchestrator to manage, simulate, and solve complex manufacturing scenarios.
 
-
-*(Add a screenshot of your JavaFX application here, showing the Gantt chart, job list, and chat interface)*
-
 ---
 
 ## 🤖 Core Concept: The LLM as an Orchestrator
