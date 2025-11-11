@@ -1,6 +1,7 @@
 from fastapi import APIRouter, HTTPException, Depends, Header
 from pydantic import BaseModel
 from sqlmodel import Session, select, delete
+from sqlalchemy.orm import selectinload
 import google.generativeai as genai
 # NEW: Import datetime
 import datetime
@@ -194,8 +195,15 @@ def get_jobs_for_problem(
     db: Session = Depends(get_session),
     context: AppContext = Depends(get_user_context) # Injects the user's session
 ):
-    # Selects jobs ONLY from the user's active scenario
-    statement = select(Job).where(Job.scenario_id == context.current_scenario_id)
+    """
+    Fetches all jobs for the active scenario, now with their operations
+    eagerly loaded to populate the frontend TreeView.
+    """
+    statement = (
+        select(Job)
+        .where(Job.scenario_id == context.current_scenario_id)
+        .options(selectinload(Job.operation_list)) 
+    )
     return db.exec(statement).all()
 
 @router.post("/solve", response_model=Schedule, tags=["Scheduling"])
@@ -558,11 +566,11 @@ def _tool_get_schedule_kpis(db: Session, context: AppContext) -> Dict[str, Any]:
     if last_schedule:
 
         avg_flow = round(last_schedule.average_flow_time, 2)
-        util = {k: f"{v*100:.2f}%" for k, v in last_schedule.machine_utilization.items()}
+        util = {k: round(v, 4) for k, v in last_schedule.machine_utilization.items()}
 
         return {
             "makespan": last_schedule.makespan,
-            "average_flow_time": avg_flow,
+            "average_flow_time": round(last_schedule.average_flow_time, 2),
             "machine_utilization": util
         }
     return {"error": f"No schedule has been computed for active scenario {scenario_id}."}
@@ -584,11 +592,11 @@ def _tool_solve_schedule(db: Session, context: AppContext) -> Dict[str, Any]:
         context.set_last_schedule(final_schedule)
 
         avg_flow = round(final_schedule.average_flow_time, 2)
-        util = {k: f"{v*100:.2f}%" for k, v in final_schedule.machine_utilization.items()}
+        util = {k: round(v, 4) for k, v in final_schedule.machine_utilization.items()}
 
         return {
             "status": "Success", "makespan": final_schedule.makespan,
-            "average_flow_time": avg_flow,
+            "average_flow_time": round(final_schedule.average_flow_time, 2),
             "machine_utilization": util
         }
     except Exception as e:
@@ -608,11 +616,11 @@ def _tool_simulate_solve(db: Session, context: AppContext) -> Dict[str, Any]:
             return {"error": "Solver failed to find a solution."}
         
         avg_flow = round(final_schedule.average_flow_time, 2)
-        util = {k: f"{v*100:.2f}%" for k, v in final_schedule.machine_utilization.items()}
+        util = {k: round(v, 4) for k, v in final_schedule.machine_utilization.items()}
 
         return {
             "status": "Success", "makespan": final_schedule.makespan,
-            "average_flow_time": avg_flow,
+            "average_flow_time": round(final_schedule.average_flow_time, 2),
             "machine_utilization": util
         }
     except Exception as e:

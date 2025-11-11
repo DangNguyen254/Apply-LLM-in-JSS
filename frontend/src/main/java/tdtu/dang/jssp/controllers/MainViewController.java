@@ -6,10 +6,14 @@ import javafx.scene.control.*;
 import javafx.scene.input.KeyCode;
 import javafx.scene.input.KeyEvent;
 import javafx.scene.layout.AnchorPane;
+import javafx.stage.FileChooser;
 import tdtu.dang.jssp.models.*;
 import tdtu.dang.jssp.services.ApiClient;
 import tdtu.dang.jssp.views.GanttChart;
+import com.fasterxml.jackson.databind.ObjectMapper; 
+import com.fasterxml.jackson.databind.SerializationFeature;
 
+import java.io.File;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
@@ -23,18 +27,22 @@ public class MainViewController {
     @FXML private AnchorPane ganttChartPane;
     @FXML private Button submitButton;
     @FXML private Button solveButton;
+    @FXML private Button exportButton;
     @FXML private Button resetButton;
     @FXML private TextArea promptInput;
     @FXML private TextArea statusDisplayArea;
 
     private GanttChart ganttChart;
     private final ApiClient apiClient = new ApiClient();
-    
-    // The problemId is no longer needed, it's managed by the server session.
-    // private final String problemId = "problem_1"; 
 
     // Stores the conversation state
     private List<Map<String, Object>> conversationHistory;
+
+    // Store the last successful schedule for export
+    private Schedule currentSchedule;
+    
+    // ObjectMapper for writing JSON
+    private final ObjectMapper objectMapper = new ObjectMapper();
 
     @FXML
     public void initialize() {
@@ -46,6 +54,12 @@ public class MainViewController {
         ganttChartPane.getChildren().add(ganttChart);
 
         this.conversationHistory = new ArrayList<>();
+
+        // Configure the ObjectMapper
+        this.objectMapper.enable(SerializationFeature.INDENT_OUTPUT);
+        
+        // Disable export button by default
+        exportButton.setDisable(true);
 
         promptInput.addEventFilter(KeyEvent.KEY_PRESSED, event -> {
             if (event.getCode() == KeyCode.TAB) {
@@ -78,6 +92,7 @@ public class MainViewController {
             submitButton.setDisable(true);
             solveButton.setDisable(true);
             resetButton.setDisable(true);
+            exportButton.setDisable(true);
         }
         
         // Request focus on the prompt area
@@ -106,13 +121,19 @@ public class MainViewController {
             for (Job job : jobs) {
                 String jobLabel = String.format("%s: %s (Priority: %d)", job.getId(), job.getName(), job.getPriority());
                 TreeItem<String> jobItem = new TreeItem<>(jobLabel);
-                if (job.getOpList() != null) {
+
+                // FIX: Check if the list is not null AND not empty
+                if (job.getOpList() != null && !job.getOpList().isEmpty()) {
                     for (Operation op : job.getOpList()) {
                         TreeItem<String> opItem = new TreeItem<>(
                                 String.format("%s: Group %s, Time %d", op.getId(), op.getMachineGroupId(), op.getProcessingTime())
                         );
                         jobItem.getChildren().add(opItem);
                     }
+                } else {
+                    // Add a placeholder if there are no operations
+                    TreeItem<String> noOpsItem = new TreeItem<>("No operations defined");
+                    jobItem.getChildren().add(noOpsItem);
                 }
                 rootItem.getChildren().add(jobItem);
             }
@@ -201,6 +222,8 @@ public class MainViewController {
                 statusDisplayArea.appendText("Solver failed to find a solution for the current state.\n");
                 ganttChart.clear();
                 resultDisplayArea.clear();
+                this.currentSchedule = null;
+                exportButton.setDisable(true);
                 return;
             }
 
@@ -217,10 +240,16 @@ public class MainViewController {
 
     // This method is unchanged
     private void displayScheduleResults(Schedule schedule, List<Job> jobs, List<MachineGroup> machineGroups) {
+        // NEW: Save the schedule for export
+        this.currentSchedule = schedule;
+        
+        // NEW: Enable the export button
+        exportButton.setDisable(false);
+        
         // Draw Gantt Chart
         ganttChart.displaySchedule(schedule, jobs, machineGroups);
         
-        // Display KPIs
+        // Display KPIs (Unchanged)
         StringBuilder resultText = new StringBuilder();
         resultText.append(String.format("Makespan: %d\n", schedule.getMakespan()));
         resultText.append(String.format("Average Job Flow Time: %.2f\n\n", schedule.getAverageFlowTime()));
@@ -228,11 +257,10 @@ public class MainViewController {
         if (schedule.getMachineUtilization() != null) {
             schedule.getMachineUtilization().entrySet().stream()
                 .sorted(Map.Entry.comparingByKey())
-                .forEach(entry -> resultText.append(String.format("- %s: %.2f%%\n", entry.getKey(), entry.getValue() * 100)));
+                .forEach(entry -> resultText.append(String.format("- %s: %s\n", entry.getKey(), entry.getValue()))); // Use %s for pre-formatted string
         }
         resultDisplayArea.setText(resultText.toString());
     }
-
 
     @FXML
     private void handleSolveButtonKeyPress(KeyEvent event) {
@@ -243,22 +271,51 @@ public class MainViewController {
     }
 
     @FXML
+    private void handleExportButton() {
+        if (currentSchedule == null) {
+            statusDisplayArea.appendText("Error: No schedule data to export.\n");
+            return;
+        }
+
+        FileChooser fileChooser = new FileChooser();
+        fileChooser.setTitle("Save Schedule as JSON");
+        fileChooser.setInitialFileName("schedule_export.json");
+        fileChooser.getExtensionFilters().add(
+            new FileChooser.ExtensionFilter("JSON Files", "*.json")
+        );
+        
+        // Get the main window (Stage)
+        File file = fileChooser.showSaveDialog(exportButton.getScene().getWindow());
+
+        if (file != null) {
+            try {
+                // Write the Java Schedule object directly to the file as JSON
+                objectMapper.writeValue(file, currentSchedule);
+                statusDisplayArea.appendText("Schedule exported successfully to " + file.getAbsolutePath() + "\n");
+            } catch (IOException e) {
+                statusDisplayArea.appendText("Error exporting schedule: " + e.getMessage() + "\n");
+                e.printStackTrace();
+            }
+        }
+    }
+
+    @FXML
     private void handleResetButton() {
         statusDisplayArea.appendText("Resetting database to default...\n");
         
         try {
-            // This tool now resets the entire DB and returns a new session token
             String newSessionToken = apiClient.resetProblem();
             statusDisplayArea.appendText("Database has been reset.\n");
             statusDisplayArea.appendText("New session established.\n");
             
-            // Clear local state
             this.conversationHistory.clear();
             ganttChart.clear();
             resultDisplayArea.clear();
             promptInput.clear();
             
-            // Reload the fresh data
+            this.currentSchedule = null;
+            exportButton.setDisable(true);
+            
             refreshAllData();
             
         } catch (IOException | InterruptedException e) {

@@ -270,6 +270,15 @@ You do NOT need to ask the user to select a scenario at the start.
 - If a user provides a job NAME (e.g., 'Job ABC') when an ID (e.g., 'J001') is needed, you MUST FIRST use `find_job_id_by_name`.
 - If a user provides a machine group NAME (e.g., 'Milling') when an ID (e.g., 'MG001') is needed, you MUST FIRST use `find_machine_group_id_by_name`.
 
+**HANDLING RELATIVE COMMANDS (e.g., "highest", "last")**
+- If the user uses a relative term like 'highest priority' or 'lowest priority' for a job, you cannot just guess a number.
+- Your plan MUST be:
+  1. Call `get_current_problem_state` to see the list of all jobs and their current priorities.
+  2. Analyze the tool output to find the current maximum or minimum priority.
+  3. Calculate the correct new priority (e.g., `max(priorities) + 1` for 'highest', or `min(priorities) - 1` for 'lowest').
+  4. Call `modify_job` with the correct job ID and the newly calculated priority number.
+- This also applies to other relative terms like "delete the last job added" (you must `get_current_problem_state` to find the job with the newest-looking ID).
+
 **WHAT-IF SCENARIOS (SIMULATIONS):**
 This is a key feature.
 1.  If the user asks a "what-if" or "simulate" question (e.g., "what if a machine breaks?"), your plan MUST be:
@@ -306,9 +315,9 @@ def interpret_command(history: List[Dict[str, Any]]) -> Any:
             temperature=0.2 
         )
 
-        # --- FIX 1: Use the full model identifier ---
         model = genai.GenerativeModel(
-            'gemini-2.0-flash',
+            # 'gemini-2.0-flash',
+            'gemini-2.0-flash-lite',
             tools=[scheduling_tool],
             system_instruction=system_prompt,
         )
@@ -324,7 +333,6 @@ def interpret_command(history: List[Dict[str, Any]]) -> Any:
             error_message = f"LLM response empty/blocked. Finish Reason: {finish_reason}. Safety: {safety_ratings}"
             print(f"Warning: {error_message}")
             
-            # --- FIX 2: Return the *detailed* error message ---
             return {'error': f"Could not get valid response from LLM. Reason: {finish_reason}"}
 
         return response.candidates[0].content
