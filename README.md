@@ -4,7 +4,7 @@ A full-stack, multi-user scheduling application where a Google Gemini LLM acts a
 
 ---
 
-## 🤖 Core Concept: The LLM as an Orchestrator
+## Core Concept: The LLM as an Orchestrator
 
 This project is not a simple chatbot. It's a demonstration of an LLM acting as a "stateful orchestrator."
 
@@ -25,7 +25,7 @@ When the user says, "Okay, make that real," the LLM knows it is back in the "Liv
 
 ---
 
-## ✨ Key Features
+## Key Features
 
 * **LLM Orchestrator:** Uses Google Gemini 2.5 Flash with Tool-Calling to plan and execute complex, multi-step tasks.
 * **Multi-Objective Solver:** Employs Google OR-Tools to solve the JSSp, optimizing for a weighted combination of **Job Priority** and **Makespan**.
@@ -38,7 +38,7 @@ When the user says, "Okay, make that real," the LLM knows it is back in the "Liv
 
 ---
 
-## 📐 System Architecture
+## System Architecture
 
 This project follows a classic client-server architecture.
 
@@ -61,7 +61,7 @@ A rich desktop client built with **JavaFX**.
 
 ---
 
-## 🛠️ Technology Stack
+## Technology Stack
 
 | Component | Technology |
 | :--- | :--- |
@@ -74,7 +74,7 @@ A rich desktop client built with **JavaFX**.
 
 ---
 
-## 🚀 How to Run
+## How to Run
 
 ### Prerequisites
 * Python 3.10+
@@ -114,7 +114,7 @@ A rich desktop client built with **JavaFX**.
 
 ---
 
-## 💬 Example Commands
+## Example Commands
 
 * "Solve the current schedule."
 * "What is the current makespan?"
