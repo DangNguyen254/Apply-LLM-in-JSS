@@ -1,51 +1,27 @@
 package tdtu.dang.jssp.models;
-import java.util.List;
-import com.fasterxml.jackson.annotation.JsonProperty;
+
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
+import com.fasterxml.jackson.annotation.JsonProperty;
+import java.util.List;
 
 @JsonIgnoreProperties(ignoreUnknown = true)
-public class Job{
+public class Job {
     private String id;
     private String name;
     private int priority;
-
-    @JsonProperty("operation_list")
+    
+    @JsonProperty("operation_list") 
     private List<Operation> opList;
 
-    public Job(){
+    // Getters
+    public String getId() { return id; }
+    public String getName() { return name; }
+    public int getPriority() { return priority; }
+    public List<Operation> getOpList() { return opList; }
 
-    }
-
-    public Job(String id, String name, int priority, List<Operation> opList){
-        this.setId(id);
-        this.setName(name);
-        this.setOpList(opList);
-        this.setPriority(priority);
-    }
-
-    public String getId() {
-        return id;
-    }
-    public String getName() {
-        return name;
-    }
-    public List<Operation> getOpList() {
-        return opList;
-    }
-    public int getPriority() {
-        return priority;
-    }
-    public void setId(String id) {
-        this.id = id;
-    }
-    public void setName(String name) {
-        this.name = name;
-    }
-    public void setOpList(List<Operation> opList) {
-        this.opList = opList;
-    }
-    public void setPriority(int priority) {
-        this.priority = priority;
-    }
-
+    // Setters
+    public void setId(String id) { this.id = id; }
+    public void setName(String name) { this.name = name; }
+    public void setPriority(int priority) { this.priority = priority; }
+    public void setOpList(List<Operation> opList) { this.opList = opList; }
 }

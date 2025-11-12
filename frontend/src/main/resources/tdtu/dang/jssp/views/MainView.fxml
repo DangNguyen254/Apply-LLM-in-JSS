@@ -1,129 +1,116 @@
 <?xml version="1.0" encoding="UTF-8"?>
 
 <?import javafx.geometry.Insets?>
-<?import javafx.scene.control.Button?>
-<?import javafx.scene.control.Label?>
-<?import javafx.scene.control.Menu?>
-<?import javafx.scene.control.MenuBar?>
-<?import javafx.scene.control.MenuItem?>
-<?import javafx.scene.control.ScrollPane?>
-<?import javafx.scene.control.TextArea?>
-<?import javafx.scene.control.TreeView?>
-<?import javafx.scene.layout.AnchorPane?>
-<?import javafx.scene.layout.BorderPane?>
-<?import javafx.scene.layout.HBox?>
-<?import javafx.scene.layout.Region?>
-<?import javafx.scene.layout.VBox?>
+<?import javafx.scene.control.*?>
+<?import javafx.scene.layout.*?>
 
-<BorderPane prefHeight="725.0" prefWidth="957.0" stylesheets="@../styles/style.css" xmlns="http://javafx.com/javafx/24.0.1" xmlns:fx="http://javafx.com/fxml/1" fx:controller="tdtu.dang.jssp.controllers.MainViewController">
-   <top>
-      <MenuBar BorderPane.alignment="CENTER">
-        <menus>
-          <Menu mnemonicParsing="false" text="File">
-            <items>
-              <MenuItem mnemonicParsing="false" text="Close" />
-            </items>
-          </Menu>
-          <Menu mnemonicParsing="false" text="Help">
-            <items>
-              <MenuItem mnemonicParsing="false" text="About" />
-            </items>
-          </Menu>
-        </menus>
-      </MenuBar>
-   </top>
-   <left>
-      <BorderPane prefWidth="450.0">
-         <BorderPane.margin>
-               <Insets bottom="5.0" left="5.0" right="5.0" top="5.0" />
-         </BorderPane.margin>
-         <center>
-               <VBox spacing="10.0" styleClass="container-box">
-                  <padding>
-                     <Insets bottom="10.0" left="10.0" right="10.0" top="10.0" />
-                  </padding>
-                  <children>
-                     <Label text="Job Definitions:" />
-                     <TreeView fx:id="jobTreeView" VBox.vgrow="ALWAYS" />
-                     <Label text="Machine Definitions:" />
-                     <TextArea fx:id="machineDisplayArea" editable="false" focusTraversable="false" wrapText="true" VBox.vgrow="ALWAYS" />
-                  </children>
-               </VBox>
-         </center>
-         <bottom>
-               <VBox prefHeight="200.0" styleClass="container-box">
-                  <padding>
-                     <Insets bottom="10.0" left="10.0" right="10.0" top="10.0" />
-                  </padding>
-                  <children>
-                     <Label prefHeight="30.0" prefWidth="45.0" text="Result:" />
-                     <TextArea fx:id="resultDisplayArea" editable="false" focusTraversable="false" prefWidth="430.0" wrapText="true" />
-                  </children>
-                  <BorderPane.margin>
-                     <Insets top="5.0" />
-                  </BorderPane.margin>
-               </VBox>
-         </bottom>
-      </BorderPane>
-   </left>
-   
-   <center>
-      <VBox prefHeight="644.0" prefWidth="718.0" spacing="5.0" BorderPane.alignment="CENTER">
-         <children>
-            <Label styleClass="chart-title" text="Gantt Chart">
-               <VBox.margin>
-                  <Insets left="10.0" />
-               </VBox.margin>
-            </Label>
-            
-            <ScrollPane fitToWidth="true" fitToHeight="false" styleClass="gantt-scroll-pane" VBox.vgrow="ALWAYS">
-               <content>
-                  <AnchorPane fx:id="ganttChartPane" styleClass="gantt-chart-pane" />
-               </content>
-               <VBox.margin>
-                  <Insets left="10.0" right="10.0" top="10.0" />
-               </VBox.margin>
-            </ScrollPane>
-            
-            <HBox alignment="CENTER_LEFT" prefHeight="425.0" spacing="10.0">
-               <children>
-                  <VBox spacing="5.0" HBox.hgrow="ALWAYS">
-                     <children>
-                        <HBox alignment="CENTER_LEFT" prefHeight="25.0" spacing="10.0">
-                           <children>
-                              <Label text="Prompt:" />
-                              <Region HBox.hgrow="ALWAYS" />
-                              
-                              <Button fx:id="exportButton" mnemonicParsing="false" onAction="#handleExportButton" text="Export" />
-                              
-                              <Button fx:id="submitButton" mnemonicParsing="false" onAction="#handleSubmitButton" text="Submit" />
-                              <Button fx:id="solveButton" mnemonicParsing="false" onAction="#handleSolveButton" text="Solve" />
-                              <Button fx:id="resetButton" mnemonicParsing="false" onAction="#handleResetButton" text="Dev: Reset DB" />
-                           </children>
-                        </HBox>
-                        <TextArea fx:id="promptInput" onKeyPressed="#handlePromptKeyPress" prefHeight="60.0" prefWidth="450.0" promptText="e.g., Add a job abc that needs the Cutter for 3 hours..." wrapText="true" VBox.vgrow="ALWAYS" />
-                     </children>
-                  </VBox>
-                  <VBox spacing="5.0" HBox.hgrow="ALWAYS">
-                     <children>
-                        <HBox alignment="CENTER_LEFT" prefHeight="25.0">
-                           <children>
-                              <Label text="Status &amp; Logs:" />
-                           </children>
-                        </HBox>
-                        <TextArea fx:id="statusDisplayArea" editable="false" focusTraversable="false" prefHeight="62.0" prefWidth="478.0" wrapText="true" VBox.vgrow="ALWAYS" />
-                     </children>
-                  </VBox>
-               </children>
-               <padding>
-                  <Insets bottom="10.0" left="10.0" right="10.0" top="10.0" />
-               </padding>
-            </HBox>
-         </children>
-         <BorderPane.margin>
-            <Insets top="5.0" />
-         </BorderPane.margin>
-      </VBox>
-   </center>
+<BorderPane prefHeight="760.0" prefWidth="1180.0"
+            stylesheets="@../styles/style_pro.css"
+            xmlns="http://javafx.com/javafx/24.0.1"
+            xmlns:fx="http://javafx.com/fxml/1"
+            fx:controller="tdtu.dang.jssp.controllers.MainViewController">
 
+    <!-- TOP ACTION BAR -->
+    <top>
+        <HBox spacing="10.0" alignment="CENTER_LEFT" styleClass="topbar">
+            <padding><Insets top="10" right="12" bottom="10" left="12"/></padding>
+            <children>
+                <Label text="JSSP Studio" styleClass="brand-title"/>
+                <Region HBox.hgrow="ALWAYS"/>
+                <TextField fx:id="jobSearchField" promptText="Filter jobs..." onKeyReleased="#handleJobSearchKey" prefWidth="220.0"/>
+                <Button fx:id="solveButton" text="Solve" onAction="#handleSolveButton" onKeyPressed="#handleSolveButtonKeyPress"/>
+                <Button fx:id="exportButton" text="Export" onAction="#handleExportButton"/>
+                <Button fx:id="resetButton" text="Dev: Reset DB" onAction="#handleResetButton" onKeyPressed="#handleResetButtonKeyPress"/>
+            </children>
+        </HBox>
+    </top>
+
+    <!-- LEFT: INSIGHTS PANEL -->
+    <left>
+        <VBox spacing="10.0" prefWidth="380.0">
+            <padding><Insets top="10" right="10" bottom="10" left="10"/></padding>
+            <children>
+                <VBox spacing="6.0" styleClass="container-box">
+                    <children>
+                        <Label text="Jobs" styleClass="section-title"/>
+                        <TreeView fx:id="jobTreeView" VBox.vgrow="ALWAYS"/>
+                    </children>
+                </VBox>
+
+                <VBox spacing="6.0" styleClass="container-box">
+                    <children>
+                        <Label text="Machine Groups" styleClass="section-title"/>
+                        <TextArea fx:id="machineDisplayArea" editable="false" wrapText="true" VBox.vgrow="ALWAYS"/>
+                    </children>
+                </VBox>
+
+                <VBox spacing="6.0" styleClass="container-box">
+                    <children>
+                        <Label text="KPIs" styleClass="section-title"/>
+                        <VBox fx:id="kpiBox" spacing="6.0"/>
+                    </children>
+                </VBox>
+            </children>
+        </VBox>
+    </left>
+
+    <!-- CENTER: GANTT + RESULTS -->
+    <center>
+        <VBox spacing="8.0">
+            <padding><Insets top="10" right="10" bottom="10" left="0"/></padding>
+            <children>
+                <Label text="Gantt Chart" styleClass="chart-title"/>
+                <HBox spacing="8.0" alignment="CENTER_LEFT">
+                    <Label text="Zoom" styleClass="section-title"/>
+                    <Slider fx:id="timeScaleSlider" min="20" max="120" value="50" prefWidth="180"/>
+                    <Label text="Time px/unit" styleClass="hint-label"/>
+                </HBox>
+                <ScrollPane fitToWidth="true" fitToHeight="true" styleClass="gantt-scroll-pane" VBox.vgrow="ALWAYS">
+                    <content>
+                        <AnchorPane fx:id="ganttChartPane" styleClass="gantt-chart-pane"/>
+                    </content>
+                </ScrollPane>
+
+                <VBox spacing="6.0" styleClass="container-box">
+                    <children>
+                        <Label text="Result Details" styleClass="section-title"/>
+                        <TextArea fx:id="resultDisplayArea" editable="false" wrapText="true" VBox.vgrow="ALWAYS"/>
+                    </children>
+                </VBox>
+            </children>
+        </VBox>
+    </center>
+
+    <!-- RIGHT: ASSISTANT PANEL -->
+    <right>
+        <VBox spacing="10.0" prefWidth="400.0">
+            <padding><Insets top="10" right="10" bottom="10" left="10"/></padding>
+            <children>
+                <VBox spacing="6.0" styleClass="container-box">
+                    <children>
+                        <Label text="Assistant" styleClass="section-title"/>
+                        <TextArea fx:id="promptInput"
+                                  promptText="e.g., Add job ABC that needs the Cutter for 3 hours..."
+                                  onKeyPressed="#handlePromptKeyPress"
+                                  prefHeight="140.0" wrapText="true"/>
+                        <HBox alignment="CENTER_RIGHT" spacing="8.0">
+                            <Region HBox.hgrow="ALWAYS"/>
+                            <Button fx:id="submitButton" text="Submit" onAction="#handleSubmitButton" onKeyPressed="#handleSubmitButtonKeyPress"/>
+                        </HBox>
+                    </children>
+                </VBox>
+                <!-- Unified Conversation + Status Log -->
+                <VBox spacing="6.0" styleClass="container-box" VBox.vgrow="ALWAYS">
+                    <children>
+                        <Label text="Conversation &amp; Logs" styleClass="section-title"/>
+                        <ScrollPane fx:id="conversationScroll" fitToWidth="true" fitToHeight="true" VBox.vgrow="ALWAYS">
+                            <content>
+                                <VBox fx:id="conversationContainer" spacing="6.0" />
+                            </content>
+                        </ScrollPane>
+                    </children>
+                </VBox>
+            </children>
+        </VBox>
+    </right>
 </BorderPane>

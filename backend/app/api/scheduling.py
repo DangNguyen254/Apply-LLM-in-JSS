@@ -8,9 +8,13 @@ import datetime
 
 # Import all models and the get_session function
 from ..models.jssp_model import (
-    Job, MachineGroup, Operation, Schedule, ScheduledOperation, 
-    User, Scenario, CommandLog # NEW: Import CommandLog
+    Job, MachineGroup, Operation, 
+    Schedule, ScheduledOperation, # These are the DB tables
+    User, Scenario, CommandLog,
+    JobRead, ScheduleRead, # These are the Pydantic (JSON) models
+    SolverSchedule, SolverScheduledOperation # These are the solver output models
 )
+
 # We now import create_db_and_tables to run at startup
 from ..db.database import get_session, engine, create_db_and_tables
 from ..services.jssp_solver import solve_jssp
@@ -44,12 +48,10 @@ class UserLogin(BaseModel):
     password: str
 
 # --- CONTEXT MANAGER (Unchanged) ---
-# This class now represents a *single user's session*
 class AppContext:
     def __init__(self):
         self.current_user_id: Optional[int] = None
         self.current_scenario_id: Optional[int] = None
-        self.last_schedules: Dict[int, Schedule] = {} # Keyed by scenario_id
 
     def set_user_and_scenario(self, user_id: int, scenario_id: int):
         self.current_user_id = user_id
@@ -57,23 +59,7 @@ class AppContext:
         print(f"AppContext initialized: User ID {user_id}, Scenario ID {scenario_id}")
 
     def set_scenario(self, scenario_id: int):
-        # Clear cache for the old scenario
-        if self.current_scenario_id is not None:
-             self.clear_last_schedule(self.current_scenario_id)
         self.current_scenario_id = scenario_id
-
-    def get_last_schedule(self) -> Optional[Schedule]:
-        if self.current_scenario_id:
-            return self.last_schedules.get(self.current_scenario_id)
-        return None
-    
-    def set_last_schedule(self, schedule: Schedule):
-        if self.current_scenario_id:
-            self.last_schedules[self.current_scenario_id] = schedule
-
-    def clear_last_schedule(self, scenario_id: int):
-        if scenario_id in self.last_schedules:
-            del self.last_schedules[scenario_id]
 
 # --- NEW SESSION MANAGEMENT ---
 # This dictionary holds all active user sessions ("Shopping Carts")
@@ -179,24 +165,21 @@ def convert_proto_value(value: Any) -> Any:
 
 
 # --- API Endpoints (Refactored to use 'get_user_context' dependency) ---
-# All endpoints now receive the correct user's context automatically.
-
 @router.get("/machine_groups", response_model=list[MachineGroup], tags=["Scheduling"])
 def get_machine_groups(
     db: Session = Depends(get_session),
-    context: AppContext = Depends(get_user_context) # Injects the user's session
+    context: AppContext = Depends(get_user_context) 
 ):
-    # Selects machine groups ONLY from the user's active scenario
     statement = select(MachineGroup).where(MachineGroup.scenario_id == context.current_scenario_id)
     return db.exec(statement).all()
 
-@router.get("/jobs", response_model=list[Job], tags=["Scheduling"])
+@router.get("/jobs", response_model=list[JobRead], tags=["Scheduling"])
 def get_jobs_for_problem(
     db: Session = Depends(get_session),
-    context: AppContext = Depends(get_user_context) # Injects the user's session
+    context: AppContext = Depends(get_user_context) 
 ):
     """
-    Fetches all jobs for the active scenario, now with their operations
+    Fetches all jobs for the active scenario, with their operations
     eagerly loaded to populate the frontend TreeView.
     """
     statement = (
@@ -204,35 +187,51 @@ def get_jobs_for_problem(
         .where(Job.scenario_id == context.current_scenario_id)
         .options(selectinload(Job.operation_list)) 
     )
-    return db.exec(statement).all()
+    jobs = db.exec(statement).all()
+    # Convert SQLModel objects to Pydantic JobRead objects
+    return [JobRead.model_validate(job) for job in jobs]
 
-@router.post("/solve", response_model=Schedule, tags=["Scheduling"])
-def solve_schedule_endpoint(
+@router.get("/get_latest_schedule", response_model=ScheduleRead, tags=["Scheduling"])
+def get_latest_schedule_for_scenario(
     db: Session = Depends(get_session),
-    context: AppContext = Depends(get_user_context) # Injects the user's session
+    context: AppContext = Depends(get_user_context)
 ):
     """
-    Solves the *current active scenario* for the logged-in user.
+    Fetches the most recent, complete schedule from the database
+    for the user's active scenario.
     """
-    try:
-        # Get data only from the user's active scenario
-        jobs = db.exec(select(Job).where(Job.scenario_id == context.current_scenario_id)).all()
-        machine_groups = db.exec(select(MachineGroup).where(MachineGroup.scenario_id == context.current_scenario_id)).all()
-        
-        if not jobs or not machine_groups:
-             raise HTTPException(status_code=400, detail="Cannot solve: Active scenario has no jobs or no machine groups.")
+    schedule = db.exec(
+        select(Schedule)
+        .where(Schedule.scenario_id == context.current_scenario_id)
+        .order_by(Schedule.timestamp.desc()) # Get the newest one
+        .options(selectinload(Schedule.scheduled_operations)) # Eager load operations
+    ).first()
+    
+    if not schedule:
+        raise HTTPException(status_code=404, detail="No schedule has been saved for this scenario yet.")
+    
+    # Convert to the Pydantic Read model to include operations
+    return ScheduleRead.model_validate(schedule)
 
-        final_schedule = solve_jssp(jobs=jobs, machine_groups=machine_groups)
-        if not final_schedule:
-            context.clear_last_schedule(context.current_scenario_id)
-            raise HTTPException(status_code=500, detail="Solver failed to find a solution.")
+# OBSOLETE: The /solve endpoint is now handled by the LLM tool
+# The frontend "Solve" button will call /interpret with the command "solve"
+# We keep this (unused) for now to avoid breaking old frontend builds, but it's deprecated.
+@router.post("/solve", response_model=ScheduleRead, tags=["Scheduling (Deprecated)"])
+def solve_schedule_endpoint_DEPRECATED(
+    db: Session = Depends(get_session),
+    context: AppContext = Depends(get_user_context) 
+):
+    """
+    DEPRECATED: This is now handled by the '_tool_solve_schedule' tool.
+    This endpoint will solve and SAVE the schedule.
+    """
+    # We just call the tool function directly
+    result = _tool_solve_schedule(db, context)
+    if "error" in result:
+        raise HTTPException(status_code=500, detail=result["error"])
 
-        # Save the schedule to the user's session context
-        context.set_last_schedule(final_schedule)
-        return final_schedule
-    except Exception as e:
-        context.clear_last_schedule(context.current_scenario_id); traceback.print_exc()
-        raise HTTPException(status_code=500, detail=f"An unexpected error occurred during solving: {e}")
+    # Fetch the schedule we just saved
+    return get_latest_schedule_for_scenario(db, context)
 
 # --- NEW CONTEXT TOOLS (Refactored for Context) ---
 # All tools now take 'context: AppContext' as an argument.
@@ -560,67 +559,129 @@ def _tool_get_machine_group_details(db: Session, context: AppContext, machine_gr
     return {"machine_group": mg.model_dump(exclude={'scenario'})}
 
 def _tool_get_schedule_kpis(db: Session, context: AppContext) -> Dict[str, Any]:
+    """
+    Fetches the KPIs of the LATEST schedule saved in the database
+    for the user's active scenario.
+    """
     scenario_id = context.current_scenario_id
-    # Get schedule *from the active session context*
-    last_schedule = context.get_last_schedule()
-    if last_schedule:
-
-        avg_flow = round(last_schedule.average_flow_time, 2)
-        util = {k: round(v, 4) for k, v in last_schedule.machine_utilization.items()}
-
+    
+    # Get the most recent schedule from the DB
+    schedule = db.exec(
+        select(Schedule)
+        .where(Schedule.scenario_id == scenario_id)
+        .order_by(Schedule.timestamp.desc())
+    ).first()
+    
+    if schedule:
+        # Format the KPIs for the LLM
+        avg_flow = round(schedule.average_flow_time, 2)
+        util = {k: round(v, 4) for k, v in schedule.machine_utilization.items()}
+        
         return {
-            "makespan": last_schedule.makespan,
-            "average_flow_time": round(last_schedule.average_flow_time, 2),
+            "makespan": schedule.makespan,
+            "average_flow_time": avg_flow,
             "machine_utilization": util
         }
     return {"error": f"No schedule has been computed for active scenario {scenario_id}."}
 
 def _tool_solve_schedule(db: Session, context: AppContext) -> Dict[str, Any]:
+    """
+    Solves the active scenario, SAVES the new schedule to the database,
+    and returns the KPIs.
+    """
     scenario_id = context.current_scenario_id
     try:
-        # Get data *from the active scenario*
+        # 1. Get data from the active scenario
         jobs = db.exec(select(Job).where(Job.scenario_id == scenario_id)).all()
         mgs = db.exec(select(MachineGroup).where(MachineGroup.scenario_id == scenario_id)).all()
-        if not jobs or not mgs: return {"error": "Cannot solve: No jobs or machines in scenario."}
+        if not jobs or not mgs: 
+            return {"error": "Cannot solve: No jobs or machines in scenario."}
 
-        final_schedule = solve_jssp(jobs=jobs, machine_groups=mgs)
-        if not final_schedule:
-            context.clear_last_schedule(scenario_id)
+        # 2. Run the solver
+        solver_result: Optional[SolverSchedule] = solve_jssp(jobs=jobs, machine_groups=mgs)
+        if not solver_result:
             return {"error": "Solver failed to find a solution."}
         
-        # Save the schedule *to the active session context*
-        context.set_last_schedule(final_schedule)
+        # 3. Clear old schedules for this scenario
+        old_schedules = db.exec(select(Schedule).where(Schedule.scenario_id == scenario_id)).all()
+        for s in old_schedules:
+            db.delete(s)
+        # We commit the deletion separately
+        db.commit() 
+        
+        # 4. Create the new Schedule DB object
+        new_schedule_db = Schedule(
+            makespan=solver_result.makespan,
+            average_flow_time=solver_result.average_flow_time,
+            machine_utilization=solver_result.machine_utilization,
+            scenario_id=scenario_id,
+            timestamp=datetime.datetime.now()
+        )
+        db.add(new_schedule_db)
+        
+        # 5. Create all the new ScheduledOperation DB objects
+        new_ops_db = []
+        for op_result in solver_result.scheduled_operations:
+            new_ops_db.append(
+                ScheduledOperation(
+                    job_id=op_result.job_id,
+                    operation_id=op_result.operation_id,
+                    machine_instance_id=op_result.machine_instance_id,
+                    start_time=op_result.start_time,
+                    end_time=op_result.end_time,
+                    schedule=new_schedule_db # Link to the parent schedule
+                )
+            )
+        db.add_all(new_ops_db)
+        
+        # 6. Commit the new schedule to the database
+        db.commit()
+        db.refresh(new_schedule_db)
 
-        avg_flow = round(final_schedule.average_flow_time, 2)
-        util = {k: round(v, 4) for k, v in final_schedule.machine_utilization.items()}
-
+        # 7. Format KPIs for the LLM
+        avg_flow = round(new_schedule_db.average_flow_time, 2)
+        util = {k: round(v, 4) for k, v in new_schedule_db.machine_utilization.items()}
+        
         return {
-            "status": "Success", "makespan": final_schedule.makespan,
-            "average_flow_time": round(final_schedule.average_flow_time, 2),
-            "machine_utilization": util
+            "status": "Success", 
+            "makespan": new_schedule_db.makespan,
+            "average_flow_time": avg_flow,
+            "machine_utilization": util,
+            "new_schedule_id": new_schedule_db.id
         }
     except Exception as e:
-        context.clear_last_schedule(scenario_id); traceback.print_exc()
+        db.rollback()
+        traceback.print_exc()
         return {"error": f"An unexpected error occurred during solving: {e}"}
 
 def _tool_simulate_solve(db: Session, context: AppContext) -> Dict[str, Any]:
+    """
+    Solves the active scenario but DOES NOT save to the database.
+    This is for 'what-if' analysis.
+    """
     scenario_id = context.current_scenario_id
     try:
-        # Get data *from the active scenario*
-        jobs = db.exec(select(Job).where(Job.scenario_id == scenario_id)).all()
+        jobs = db.exec(
+            select(Job)
+            .where(Job.scenario_id == scenario_id)
+            .options(selectinload(Job.operation_list))
+        ).all()
         mgs = db.exec(select(MachineGroup).where(MachineGroup.scenario_id == scenario_id)).all()
-        if not jobs or not mgs: return {"error": "Cannot solve: No jobs or machines in scenario."}
+        if not jobs or not mgs: 
+            return {"error": "Cannot solve: No jobs or machines in scenario."}
 
-        final_schedule = solve_jssp(jobs=jobs, machine_groups=mgs)
+        # Run the solver
+        final_schedule: Optional[SolverSchedule] = solve_jssp(jobs=jobs, machine_groups=mgs)
         if not final_schedule:
             return {"error": "Solver failed to find a solution."}
         
+        # Format KPIs for the LLM
         avg_flow = round(final_schedule.average_flow_time, 2)
         util = {k: round(v, 4) for k, v in final_schedule.machine_utilization.items()}
-
+        
         return {
             "status": "Success", "makespan": final_schedule.makespan,
-            "average_flow_time": round(final_schedule.average_flow_time, 2),
+            "average_flow_time": avg_flow,
             "machine_utilization": util
         }
     except Exception as e:
@@ -643,33 +704,29 @@ def _tool_find_machine_group_id_by_name(db: Session, context: AppContext, machin
 
 # --- DEVELOPER-ONLY RESET TOOL (Updated) ---
 def _developer_tool_reset_all(db: Session, context: AppContext) -> str:
-    """
-    Resets the entire database, clears all sessions, and returns a NEW
-    session token for the 'admin' user.
-    """
     try:
-        # Clear all sessions
         user_sessions.clear()
         
-        # Clear all tables
-        # NEW: Delete from CommandLog first
+        # Clear all tables. Order matters due to ForeignKeys.
+        # We must delete tables with ForeignKeys FIRST.
+        db.exec(delete(ScheduledOperation))
+        db.exec(delete(Schedule))
         db.exec(delete(CommandLog))
-        db.exec(delete(Operation)); db.exec(delete(Job));
-        db.exec(delete(MachineGroup)); db.exec(delete(Scenario));
-        db.exec(delete(User));
+        db.exec(delete(Operation))
+        db.exec(delete(Job))
+        db.exec(delete(MachineGroup))
+        db.exec(delete(Scenario))
+        db.exec(delete(User))
         
-        # We must re-import the populate function from its new home
         from ..db.database import populate_database
         user_id, scenario_id = populate_database(session=db)
         db.commit()
         
-        # Re-create and re-cache the session for the 'admin' user
         session_token = str(uuid.uuid4())
         new_context = AppContext()
         new_context.set_user_and_scenario(user_id, scenario_id)
         user_sessions[session_token] = new_context
         
-        # We must return the *new token* so the client can use it
         return f"Problem has been reset. New session token: {session_token}"
     except Exception as e:
         db.rollback(); traceback.print_exc()
@@ -701,37 +758,30 @@ tool_function_map: Dict[str, Callable] = {
     "find_machine_group_id_by_name": _tool_find_machine_group_id_by_name,
 }
 
-# --- ORCHESTRATOR ENDPOINT (Updated with Logging) ---
-
 @router.post("/interpret", tags=["LLM"], response_model=Dict[str, Any])
 async def interpret_user_command_orchestrator(
     command_request: UserCommand, 
     db: Session = Depends(get_session),
-    context: AppContext = Depends(get_user_context) # This is the magic!
+    context: AppContext = Depends(get_user_context) 
 ):
-    """
-    This endpoint is the main orchestrator.
-    It uses the user's session context (injected by `get_user_context`)
-    to process their command.
-    """
     history = command_request.history or []
     history.append({'role': 'user', 'parts': [{'text': command_request.command}]})
     
-    max_turns = 10 # Safety limit
+    # This will be set to the ID of a newly created schedule
+    new_schedule_id: Optional[int] = None 
+    
+    max_turns = 10 
     for turn in range(max_turns):
         print(f"\nTurn {turn} for User {context.current_user_id}")
         
         try:
-            # Get the LLM's next desired action (text or tool call)
             llm_response_content_or_error = interpret_command(history=history)
-
             if isinstance(llm_response_content_or_error, dict) and 'error' in llm_response_content_or_error:
                 raise HTTPException(status_code=500, detail=f"LLM Error: {llm_response_content_or_error['error']}")
 
             llm_response_content = llm_response_content_or_error
             model_turn_parts = []
             
-            # Process the response parts
             if llm_response_content.parts:
                 for part in llm_response_content.parts:
                     part_dict = {}
@@ -747,15 +797,12 @@ async def interpret_user_command_orchestrator(
             if not model_turn_parts:
                 raise HTTPException(status_code=500, detail="LLM response empty/unprocessable.")
             
-            # Add the model's response (tool call or text) to history
             history.append({'role': 'model', 'parts': model_turn_parts})
             print(f"Appended Model Turn: {json.dumps(history[-1], indent=2)}")
 
-            # Check if the model's response was a tool call
             function_call_part = next((part for part in model_turn_parts if 'function_call' in part), None)
 
             if function_call_part:
-                # --- This is a Tool Call turn ---
                 tool_name = function_call_part['function_call'].get('name', 'Unknown')
                 tool_args = function_call_part['function_call'].get('args', {})
                 print(f"Turn {turn}: LLM requested tool '{tool_name}' with args: {tool_args}")
@@ -765,8 +812,12 @@ async def interpret_user_command_orchestrator(
                 else:
                     tool_function = tool_function_map[tool_name]
                     try:
-                        # Inject the user's context and the db session
                         tool_result = tool_function(db=db, context=context, **tool_args)
+                        
+                        # NEW: Check if this was a successful solve
+                        if tool_name == 'solve_schedule' and 'new_schedule_id' in tool_result:
+                            new_schedule_id = tool_result['new_schedule_id']
+
                     except HTTPException as http_exc:
                         tool_result = {"error": f"Tool execution error: {http_exc.detail}"}
                     except TypeError as e: 
@@ -775,49 +826,46 @@ async def interpret_user_command_orchestrator(
                         tool_result = {"error": f"Error executing '{tool_name}': {str(e)}"}
 
                 print(f"Turn {turn}: Tool '{tool_name}' result: {tool_result}")
-                
                 try: result_content_value = json.dumps(tool_result)
                 except TypeError: result_content_value = f"Error: Non-serializable result from '{tool_name}'."
-
-                # Add the tool's result to history for the next loop
                 history.append({
                     'role': 'function',
                     'parts': [{'function_response': {'name': tool_name, 'response': {'content': result_content_value}}}]
                 })
                 print(f"Appended Function Turn: {json.dumps(history[-1], indent=2)}")
-                continue # Go to the next turn
+                continue 
 
             else:
-                # --- This is a Final Answer turn ---
                 final_answer = "\n".join(part.get('text', '') for part in model_turn_parts if 'text' in part).strip()
                 if not final_answer:
                     raise HTTPException(status_code=500, detail="LLM provided an empty response.")
                 
                 print(f"Turn {turn}: LLM provided final answer. Ending loop.")
-
-                # --- NEW: Write SUCCESS to CommandLog ---
                 try:
                     new_log = CommandLog(
                         user_id=context.current_user_id,
                         scenario_id=context.current_scenario_id,
                         user_command=command_request.command,
                         final_response=final_answer,
-                        full_history=json.dumps(history), # Store the whole conversation
+                        full_history=json.dumps(history),
                         timestamp=datetime.datetime.now()
                     )
-                    db.add(new_log)
-                    # We commit here, separate from the main session
-                    # because logging should not be rolled back if other logic fails
-                    db.commit()
+                    db.add(new_log); db.commit()
                 except Exception as log_e:
-                    print(f"CRITICAL: Failed to write to audit log: {log_e}")
-                    db.rollback() # Rollback the log only
-                # --- End of Logging ---
+                    print(f"CRITICAL: Failed to write to audit log: {log_e}"); db.rollback()
 
                 schedule_to_return = None
-                schedule = context.get_last_schedule()
-                if schedule:
-                    schedule_to_return = schedule.model_dump()
+                
+                # NEW: If a schedule was just generated, fetch it
+                if new_schedule_id:
+                    schedule_db = db.exec(
+                        select(Schedule)
+                        .where(Schedule.id == new_schedule_id)
+                        .options(selectinload(Schedule.scheduled_operations))
+                    ).first()
+                    if schedule_db:
+                        # Convert to the Pydantic Read model for the JSON response
+                        schedule_to_return = ScheduleRead.model_validate(schedule_db).model_dump()
                 
                 return {
                     "explanation": final_answer, 
@@ -826,7 +874,6 @@ async def interpret_user_command_orchestrator(
                 }
 
         except HTTPException as http_exc:
-             # --- NEW: Write HTTP ERROR to CommandLog ---
             try:
                 new_log = CommandLog(
                     user_id=context.current_user_id,
@@ -836,16 +883,12 @@ async def interpret_user_command_orchestrator(
                     full_history=json.dumps(history),
                     timestamp=datetime.datetime.now()
                 )
-                db.add(new_log)
-                db.commit()
+                db.add(new_log); db.commit()
             except Exception as log_e:
-                print(f"CRITICAL: Failed to write ERROR to audit log: {log_e}")
-                db.rollback()
-            # --- End of Logging ---
+                print(f"CRITICAL: Failed to write ERROR to audit log: {log_e}"); db.rollback()
             print(f"HTTP Exception on Turn {turn}: {http_exc.detail}"); raise http_exc
         
         except Exception as e:
-            # --- NEW: Write GENERAL ERROR to CommandLog ---
             try:
                 new_log = CommandLog(
                     user_id=context.current_user_id,
@@ -855,16 +898,12 @@ async def interpret_user_command_orchestrator(
                     full_history=json.dumps(history),
                     timestamp=datetime.datetime.now()
                 )
-                db.add(new_log)
-                db.commit()
+                db.add(new_log); db.commit()
             except Exception as log_e:
-                print(f"CRITICAL: Failed to write ERROR to audit log: {log_e}")
-                db.rollback()
-            # --- End of Logging ---
+                print(f"CRITICAL: Failed to write ERROR to audit log: {log_e}"); db.rollback()
             print(f"Loop error on Turn {turn}: {e}"); traceback.print_exc()
             raise HTTPException(status_code=500, detail=f"Orchestrator loop error on turn {turn}: {e}")
 
-    # This exception is for the loop running too long
     raise HTTPException(status_code=500, detail=f"Orchestration exceeded maximum turns ({max_turns}).")
 
 @router.post("/reset", tags=["Scheduling"])
@@ -872,25 +911,14 @@ def reset_problem_state_endpoint(
     db: Session = Depends(get_session),
     context: AppContext = Depends(get_user_context)
 ):
-    """
-    (Developer-Only Endpoint)
-    API endpoint to reset the database to its original mock data.
-    This will log out all users and create a new session for you.
-    """
     status_or_token = _developer_tool_reset_all(db=db, context=context)
     if status_or_token.startswith("Error"):
          raise HTTPException(status_code=500, detail=status_or_token)
-    
-    # The client needs the new token to continue
     return {"message": "Database reset successfully.", "new_session_token": status_or_token.split(": ")[-1]}
 
 # --- This runs when the API router is loaded ---
 @router.on_event("startup")
 def on_startup():
-    """
-    This function runs when the application starts.
-    It creates the DB tables. It no longer sets up a global context.
-    """
     print("Running startup event...")
     create_db_and_tables()
     print("Database and tables verified.")

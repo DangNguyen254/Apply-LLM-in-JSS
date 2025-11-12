@@ -12,7 +12,7 @@ api_key = os.getenv("GOOGLE_API_KEY")
 if api_key:
     genai.configure(api_key=api_key)
 
-# --- Tool Schemas (All Unchanged) ---
+# --- Tool Schemas ---
 
 get_active_scenario = FunctionDeclaration(
     name="get_active_scenario",
@@ -55,19 +55,21 @@ delete_scenario = FunctionDeclaration(
 
 solve_schedule = FunctionDeclaration(
     name="solve_schedule",
-    description="Runs the solver on the *active scenario*, saves the result, and returns KPIs.",
+    description="Runs the solver on the *active scenario*, saves the result to the database, and returns KPIs.",
     parameters={"type": "object", "properties": {}}
 )
 
+# --- (FIX 1) ADD THIS FUNCTION DECLARATION ---
 simulate_solve = FunctionDeclaration(
     name="simulate_solve",
-    description="Runs the solver on the *active scenario* WITHOUT saving the result. Use for 'what-if' simulations.",
+    description="Runs the solver on the *active scenario* WITHOUT saving the result to the database. Use for 'what-if' simulations.",
     parameters={"type": "object", "properties": {}}
 )
+# --- END OF FIX 1 ---
 
 get_schedule_kpis = FunctionDeclaration(
     name="get_schedule_kpis",
-    description="Retrieves the KPIs from the last *saved* schedule for the *active scenario*.",
+    description="Retrieves the KPIs from the last *saved* schedule (from the database) for the *active scenario*.",
     parameters={"type": "object", "properties": {}}
 )
 
@@ -235,12 +237,17 @@ find_machine_group_id_by_name = FunctionDeclaration(
 
 # Assemble Tool
 scheduling_tool = Tool(function_declarations=[
+    # Context Tools
     get_active_scenario,
+    # list_scenarios, 
     select_scenario,
     create_scenario,
     delete_scenario,
+    # rename_scenario,
+    
+    # Action Tools
     solve_schedule,
-    simulate_solve,
+    simulate_solve, # <-- (FIX 2) ADD THIS LINE TO THE LIST
     get_schedule_kpis,
     add_job,
     remove_job,
@@ -249,6 +256,8 @@ scheduling_tool = Tool(function_declarations=[
     add_machine_group,
     modify_machine_group,
     swap_operations,
+    
+    # Getter Tools
     get_current_problem_state,
     get_job_details,
     get_machine_group_details,
@@ -256,7 +265,7 @@ scheduling_tool = Tool(function_declarations=[
     find_machine_group_id_by_name,
 ])
 
-# System Prompt (Unchanged)
+# --- UPDATED System Prompt ---
 system_prompt = """
 You are an expert assistant for a multi-user, scenario-based Job Shop Scheduling application.
 Your role is to act as an orchestrator. You manage a user's workspace and help them analyze scheduling scenarios.
@@ -269,6 +278,7 @@ You do NOT need to ask the user to select a scenario at the start.
 **ID LOOKUP:**
 - If a user provides a job NAME (e.g., 'Job ABC') when an ID (e.g., 'J001') is needed, you MUST FIRST use `find_job_id_by_name`.
 - If a user provides a machine group NAME (e.g., 'Milling') when an ID (e.g., 'MG001') is needed, you MUST FIRST use `find_machine_group_id_by_name`.
+- **CRITICAL:** Names are human-readable (e.g., "Paint Booths", "CUST-304"). Do NOT guess at machine-like names (e.g., "PAINT_0" or "MG-PAINT_0"). Use the exact name the user provides.
 
 **HANDLING RELATIVE COMMANDS (e.g., "highest", "last")**
 - If the user uses a relative term like 'highest priority' or 'lowest priority' for a job, you cannot just guess a number.
@@ -316,8 +326,7 @@ def interpret_command(history: List[Dict[str, Any]]) -> Any:
         )
 
         model = genai.GenerativeModel(
-            # 'gemini-2.0-flash',
-            'gemini-2.0-flash-lite',
+            'models/gemini-2.0-flash-lite', # Correct model name
             tools=[scheduling_tool],
             system_instruction=system_prompt,
         )

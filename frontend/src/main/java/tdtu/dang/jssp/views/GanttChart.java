@@ -28,7 +28,7 @@ import java.util.stream.Collectors;
 public class GanttChart extends Pane {
 
     // --- CHART STYLING CONSTANTS ---
-    private static final double TIME_SCALE = 50.0;  // Pixels per time unit
+    private double timeScale = 50.0;  // Pixels per time unit (mutable for zoom)
     private static final double ROW_HEIGHT = 60.0;  // Height for one machine instance
     private static final double HEADER_WIDTH = 140.0; // Width of the Y-axis label area
     private static final double PADDING = 20.0;
@@ -37,9 +37,11 @@ public class GanttChart extends Pane {
 
     private final Map<String, Color> jobColors = new HashMap<>();
     private final List<Color> colorPalette = List.of(
-            Color.web("#8ecae6"), Color.web("#219ebc"), Color.web("#023047"),
-            Color.web("#ffb703"), Color.web("#fd9e02"), Color.web("#fb8500"),
-            Color.web("#e63946"), Color.web("#a8dadc"), Color.web("#457b9d")
+        Color.web("#8ecae6"), Color.web("#219ebc"), Color.web("#023047"),
+        Color.web("#ffb703"), Color.web("#fd9e02"), Color.web("#fb8500"),
+        Color.web("#06d6a0"), Color.web("#118ab2"), Color.web("#ffd166"),
+        Color.web("#ef476f"), Color.web("#8338ec"), Color.web("#3a86ff"),
+        Color.web("#e63946"), Color.web("#a8dadc"), Color.web("#457b9d")
     );
     private int colorIndex = 0;
 
@@ -104,7 +106,7 @@ public class GanttChart extends Pane {
         // --- SCROLLPANE SIZING ---
         // Calculate total size needed and set it
         // This forces the parent ScrollPane to show scrollbars
-        double totalWidth = HEADER_WIDTH + (schedule.getMakespan() * TIME_SCALE) + (PADDING * 2);
+    double totalWidth = HEADER_WIDTH + (schedule.getMakespan() * timeScale) + (PADDING * 2);
         double totalHeight = TIME_AXIS_HEIGHT + (totalRows * ROW_HEIGHT) + (PADDING * 2);
         
         setMinWidth(totalWidth);
@@ -158,10 +160,10 @@ public class GanttChart extends Pane {
             Color jobColor = jobColors.computeIfAbsent(op.getJobId(), k -> getNextColor());
 
             // --- Calculate block position and size ---
-            double x = HEADER_WIDTH + PADDING + (op.getStartTime() * TIME_SCALE);
+            double x = HEADER_WIDTH + PADDING + (op.getStartTime() * timeScale);
             double y = PADDING + TIME_AXIS_HEIGHT + (rowIndex * ROW_HEIGHT) + (RECT_V_PADDING / 2.0);
             
-            double width = (op.getEndTime() - op.getStartTime()) * TIME_SCALE;
+            double width = (op.getEndTime() - op.getStartTime()) * timeScale;
             double height = ROW_HEIGHT - RECT_V_PADDING; // Use full row height
 
             if (width < 1.0) width = 1.0;
@@ -217,7 +219,7 @@ public class GanttChart extends Pane {
 
     private void drawTimeAxis(int makespan, int totalRows) {
         int tickStep = 1;
-        double chartWidth = makespan * TIME_SCALE;
+        double chartWidth = makespan * timeScale;
         
         // Dynamically adjust tick step based on total width
         if (chartWidth > 3000) tickStep = 10;
@@ -225,7 +227,7 @@ public class GanttChart extends Pane {
         else if (chartWidth > 800) tickStep = 2;
 
         for (int time = 0; time <= makespan; time += tickStep) {
-            double x = HEADER_WIDTH + PADDING + (time * TIME_SCALE);
+            double x = HEADER_WIDTH + PADDING + (time * timeScale);
             
             // Draw tick label
             Label timeLabel = new Label(String.valueOf(time));
@@ -255,6 +257,13 @@ public class GanttChart extends Pane {
         getChildren().clear();
         jobColors.clear();
         colorIndex = 0;
+    }
+
+    // --- NEW: dynamic time scale setter for zoom ---
+    public void setTimeScale(double scale) {
+        if (scale < 5) scale = 5;
+        if (scale > 300) scale = 300;
+        this.timeScale = scale;
     }
 
     private Color getNextColor() {

@@ -20,7 +20,6 @@ public class ApiClient {
     private final ObjectMapper objectMapper;
     private static final String BASE_URL = "http://127.0.0.1:8000/api/scheduling"; // Backend server address
 
-    // This will store the session token after a successful login
     private String sessionToken;
 
     public ApiClient() {
@@ -34,16 +33,10 @@ public class ApiClient {
     /**
      * Attempts to log in to the backend. If successful, stores the
      * session token for all future requests.
-     * @param username The user's username
-     * @param password The user's password
-     * @return The username of the logged-in user
-     * @throws IOException
-     * @throws InterruptedException
      */
     public String login(String username, String password) throws IOException, InterruptedException {
         String url = BASE_URL + "/login";
 
-        // Create the request body JSON
         ObjectNode requestBody = objectMapper.createObjectNode();
         requestBody.put("username", username);
         requestBody.put("password", password);
@@ -61,7 +54,6 @@ public class ApiClient {
             throw new IOException("Login failed: " + response.body());
         }
 
-        // Parse the response to get the token
         JsonNode responseJson = objectMapper.readTree(response.body());
         this.sessionToken = responseJson.get("session_token").asText();
         String loggedInUsername = responseJson.get("username").asText();
@@ -98,7 +90,22 @@ public class ApiClient {
             throw new IOException("Failed to fetch jobs: " + response.body());
         }
 
-        return objectMapper.readValue(response.body(), new TypeReference<>() {});
+        String raw = response.body();
+        System.out.println("[DEBUG getJobs] Raw JSON length=" + raw.length());
+        System.out.println("[DEBUG getJobs] Raw JSON snippet=" + (raw.length() > 400 ? raw.substring(0,400)+"..." : raw));
+
+        // This parsing will now work thanks to the backend returning JobRead
+        List<Job> jobs = objectMapper.readValue(raw, new TypeReference<List<Job>>() {});
+        for (Job j : jobs) {
+            int ops = (j.getOpList()==null?0:j.getOpList().size());
+            System.out.println("[DEBUG getJobs] Job=" + j.getId() + " name=" + j.getName() + " priority=" + j.getPriority() + " ops=" + ops);
+            if (ops>0) {
+                for (Operation op : j.getOpList()) {
+                    System.out.println("   -> Op id=" + op.getId() + " mg=" + op.getMachineGroupId() + " pt=" + op.getProcessingTime() + " preds=" + (op.getPredecessors()==null?"[]":op.getPredecessors()));
+                }
+            }
+        }
+        return jobs;
     }
 
     /**
@@ -116,30 +123,41 @@ public class ApiClient {
                 
         HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
         if (response.statusCode() != 200) throw new IOException("Failed to fetch machine groups: " + response.body());
-        return objectMapper.readValue(response.body(), new TypeReference<>() {});
+        return objectMapper.readValue(response.body(), new TypeReference<List<MachineGroup>>() {});
     }
 
     /**
-     * Solves the user's active scenario.
+     * (DELETED) The solveProblem() method has been removed.
+     * All solving is now done via interpretCommand("solve").
      */
-    public Schedule solveProblem() throws IOException, InterruptedException {
+
+    /**
+     * NEW: Fetches the latest *saved* schedule from the database.
+     * Used by the "Export" button.
+     */
+    public Schedule getLatestSchedule() throws IOException, InterruptedException {
         checkAuth(); // Ensure we are logged in
-        String url = BASE_URL + "/solve";
+        String url = BASE_URL + "/get_latest_schedule";
 
         HttpRequest request = HttpRequest.newBuilder()
                 .uri(URI.create(url))
                 .header("X-Session-Token", this.sessionToken) // Add the session token
-                .POST(HttpRequest.BodyPublishers.noBody())
+                .GET()
                 .build();
 
         HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
 
         if (response.statusCode() != 200) {
-            throw new IOException("Solver failed: " + response.body());
+            throw new IOException("Failed to fetch latest schedule: " + response.body());
         }
-
-        return objectMapper.readValue(response.body(), Schedule.class);
+        String raw = response.body();
+        System.out.println("[DEBUG getLatestSchedule] Raw JSON=" + raw);
+        Schedule schedule = objectMapper.readValue(raw, Schedule.class);
+        int ops = (schedule.getScheduledOperations()==null?0:schedule.getScheduledOperations().size());
+        System.out.println("[DEBUG getLatestSchedule] makespan=" + schedule.getMakespan() + " avgFlow=" + schedule.getAverageFlowTime() + " scheduledOps=" + ops);
+        return schedule;
     }
+
 
     /**
      * Sends a command to the LLM orchestrator for the user's active session.
@@ -148,7 +166,6 @@ public class ApiClient {
         checkAuth(); // Ensure we are logged in
         String url = BASE_URL + "/interpret";
 
-        // Create the request body JSON
         ObjectNode requestBody = objectMapper.createObjectNode();
         requestBody.put("command", commandText);
         requestBody.set("history", objectMapper.valueToTree(history));
@@ -167,22 +184,28 @@ public class ApiClient {
         if (response.statusCode() != 200) {
             throw new IOException("API Error " + response.statusCode() + ": " + response.body());
         }
-
-        return objectMapper.readValue(response.body(), OrchestratorResponse.class);
+        String raw = response.body();
+        System.out.println("[DEBUG interpretCommand] Raw JSON=" + (raw.length()>600?raw.substring(0,600)+"...":raw));
+        OrchestratorResponse resp = objectMapper.readValue(raw, OrchestratorResponse.class);
+        if (resp.getSchedule()!=null) {
+            Schedule s = resp.getSchedule();
+            int ops = (s.getScheduledOperations()==null?0:s.getScheduledOperations().size());
+            // This parsing will now work because the backend returns ScheduleRead
+            System.out.println("[DEBUG interpretCommand] schedule makespan=" + s.getMakespan() + " ops=" + ops);
+        }
+        return resp;
     }
 
     /**
      * Resets the *entire database* (Developer tool).
-     * This will invalidate the current session token.
-     * @return The *new* session token to use.
      */
     public String resetProblem() throws IOException, InterruptedException {
-        checkAuth(); // Ensure we are logged in (though this token will be invalidated)
+        checkAuth(); 
         String url = BASE_URL + "/reset";
 
         HttpRequest request = HttpRequest.newBuilder()
                 .uri(URI.create(url))
-                .header("X-Session-Token", this.sessionToken) // Add the session token
+                .header("X-Session-Token", this.sessionToken) 
                 .POST(HttpRequest.BodyPublishers.noBody())
                 .build();
 
@@ -192,11 +215,9 @@ public class ApiClient {
             throw new IOException("Failed to reset problem state: " + response.body());
         }
         
-        // Parse the response to get the *new* token
         JsonNode responseJson = objectMapper.readTree(response.body());
         String newSessionToken = responseJson.get("new_session_token").asText();
         
-        // Automatically update the client's token
         this.sessionToken = newSessionToken;
         
         return newSessionToken;
