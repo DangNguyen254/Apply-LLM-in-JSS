@@ -6,6 +6,7 @@
 .label { -fx-text-fill: #f1f5f9; -fx-font-weight: 600; }
 .brand-title { -fx-text-fill: #f3f4f6; -fx-font-weight: 700; -fx-font-size: 17px; }
 .section-title { -fx-text-fill: #e5e7eb; -fx-font-size: 13px; -fx-font-weight: 600; }
+.section-title-small { -fx-text-fill: #e5e7eb; -fx-font-size: 12px; -fx-font-weight: 600; }
 .chart-title { -fx-font-size: 22px; -fx-font-weight: 600; -fx-text-fill: #ffffff; }
 .hint-label { -fx-text-fill: #9ca3af; -fx-font-size: 11px; }
 
@@ -15,12 +16,14 @@
 .button:focused { -fx-border-color: #3b82f6; -fx-border-width: 2px; }
 #submitButton { -fx-background-color: linear-gradient(to bottom, #0f766e, #0d615b); }
 #submitButton:hover { -fx-background-color: linear-gradient(to bottom, #12847b, #0f766e); }
-#resetButton { -fx-background-color: linear-gradient(to bottom, #991b1b, #7f1d1d); }
-#resetButton:hover { -fx-background-color: linear-gradient(to bottom, #b91c1c, #991b1b); }
+/* Use this new class for the reset button */
+.button-danger { -fx-background-color: linear-gradient(to bottom, #991b1b, #7f1d1d); }
+.button-danger:hover { -fx-background-color: linear-gradient(to bottom, #b91c1c, #991b1b); }
 
-.text-area, .text-field { -fx-background-color: #1c1f26; -fx-text-fill: #d1d5db; -fx-border-color: #323843; -fx-border-width: 1; -fx-border-radius: 6; -fx-background-radius: 6; -fx-font-size: 13px; -fx-padding: 6 8 6 8; }
-.text-area:focused, .text-field:focused { -fx-border-color: #3b82f6; -fx-border-width: 2px; }
+.text-area, .text-field, .combo-box { -fx-background-color: #1c1f26; -fx-text-fill: #d1d5db; -fx-border-color: #323843; -fx-border-width: 1; -fx-border-radius: 6; -fx-background-radius: 6; -fx-font-size: 13px; -fx-padding: 6 8 6 8; }
+.text-area:focused, .text-field:focused, .combo-box:focused { -fx-border-color: #3b82f6; -fx-border-width: 2px; }
 .text-area .content { -fx-background-color: transparent; }
+.text-input { -fx-prompt-text-fill: #64748b; }
 
 .container-box { -fx-background-color: #181c22; -fx-background-radius: 10; -fx-border-radius: 10; -fx-padding: 16; -fx-border-color: #2b313b; -fx-border-width: 1; }
 .gantt-chart-pane { -fx-background-color: #1a1e24; -fx-background-radius: 10; -fx-padding: 16; }
@@ -49,11 +52,7 @@
 .util-row { -fx-alignment: CENTER_LEFT; }
 .util-label { -fx-text-fill: #94a3b8; -fx-font-size: 11px; }
 
-#conversationList { -fx-background-color: #1c2026; -fx-border-color: #2b313b; -fx-border-width: 1; -fx-border-radius: 6; -fx-background-radius: 6; }
-#conversationList .list-cell { -fx-text-fill: #d1d5db; -fx-padding: 6 8 6 8; }
-#conversationList .list-cell:filled:selected { -fx-background-color: #243044; }
-
-/* Unified conversation container styles */
+/* Conversation UI */
 .conv-entry { -fx-text-fill: #d1d5db; -fx-font-size: 13px; }
 .conv-user { -fx-text-fill: #38bdf8; -fx-font-weight: 600; }
 .conv-assistant { -fx-text-fill: #cbd5e1; }
@@ -68,3 +67,168 @@
 .spacing-small { -fx-spacing: 5; }
 .spacing-medium { -fx-spacing: 10; }
 .spacing-large { -fx-spacing: 15; }
+
+/* =============================================
+   NEW: Login Screen Styles
+   ============================================= */
+.login-container {
+    -fx-background-color: #181c22;
+    -fx-border-color: #374151;
+    -fx-border-width: 1px;
+    -fx-effect: dropshadow(gaussian, rgba(0, 0, 0, 0.4), 20, 0, 0, 0);
+}
+
+.login-title {
+    -fx-font-size: 28px;
+    -fx-font-weight: 700;
+    -fx-text-fill: #f1f5f9;
+}
+
+.login-label {
+    -fx-font-size: 13px;
+    -fx-text-fill: #9ca3af;
+    -fx-font-weight: 600;
+}
+
+.login-error-label {
+    -fx-text-fill: #f87171; /* A lighter red for dark backgrounds */
+    -fx-font-size: 13px;
+    -fx-font-weight: 600;
+}
+
+#loginButton {
+    -fx-background-color: linear-gradient(to bottom, #0f766e, #0d615b);
+    -fx-font-size: 15px;
+    -fx-padding: 10 20 10 20;
+    -fx-text-fill: #ffffff;
+}
+
+#loginButton:hover {
+    -fx-background-color: linear-gradient(to bottom, #12847b, #0f766e);
+}
+
+/* =============================================
+   NEW: Help MenuButton Styles
+   ============================================= */
+.hint-label-light {
+    -fx-text-fill: #cbd5e1;
+    -fx-font-size: 13px;
+    -fx-padding: 0 10 0 0;
+}
+
+.menu-button-pro {
+    -fx-background-color: #374151;
+    -fx-background-radius: 6;
+    -fx-padding: 7 12 7 12;
+    -fx-text-fill: #f1f5f9;
+    -fx-font-size: 13px;
+    -fx-font-weight: 600;
+    -fx-cursor: hand;
+}
+.menu-button-pro:hover {
+    -fx-background-color: #4b5563;
+}
+.menu-button-pro .arrow {
+    -fx-background-color: #f1f5f9;
+}
+
+/* Style for the dropdown context menu */
+.context-menu {
+    -fx-background-color: #1f2937;
+    -fx-background-radius: 8;
+    -fx-border-color: #374151;
+    -fx-border-width: 1px;
+}
+.menu-item {
+    -fx-background-color: transparent;
+}
+.menu-item .label {
+    -fx-text-fill: #d1d5db;
+    -fx-font-weight: 500;
+}
+.menu-item:focused {
+    -fx-background-color: #3b82f6;
+}
+.menu-item:focused .label {
+    -fx-text-fill: #ffffff;
+}
+.separator-menu-item .line {
+    -fx-border-color: #374151;
+    -fx-border-insets: 0.5 0 0.5 0;
+}
+
+/* =============================================
+   NEW: Conversation Text Area
+   ============================================= */
+.conversation-text-area {
+    -fx-background-color: transparent;
+    -fx-border-color: transparent;
+    -fx-focus-color: transparent;
+    -fx-faint-focus-color: transparent;
+    -fx-text-box-border: transparent;
+    -fx-background-insets: 0;
+    -fx-padding: 0;
+    /* This makes the scrollbar inside the text area disappear */
+    -fx-vbar-policy: never;
+    -fx-hbar-policy: never;
+}
+.conversation-text-area .scroll-pane .content {
+    -fx-background-color: transparent;
+}
+
+/* =============================================
+   NEW: Button Style Additions
+   ============================================= */
+.button-danger {
+    -fx-background-color: linear-gradient(to bottom, #991b1b, #7f1d1d);
+}
+.button-danger:hover {
+    -fx-background-color: linear-gradient(to bottom, #b91c1c, #991b1b);
+}
+
+.action-bar-box {
+    -fx-background-color: #1f2937;
+    -fx-background-radius: 8;
+    -fx-padding: 10px;
+    -fx-border-color: #374151;
+    -fx-border-width: 1px;
+}
+
+/* --- ComboBox Styles --- */
+.combo-box .list-cell {
+    -fx-background-color: #1c1f26;
+    -fx-text-fill: #d1d5db;
+    -fx-padding: 8 12;
+}
+
+.combo-box-popup .list-view .list-cell:filled:hover {
+    -fx-background-color: #3b82f6;
+    -fx-text-fill: white;
+}
+
+.combo-box-popup .list-view .list-cell:filled:selected {
+    -fx-background-color: #2563eb;
+    -fx-text-fill: white;
+}
+
+.combo-box-base:hover {
+    -fx-border-color: #3b82f6;
+}
+
+/* =============================================
+   NEW: Top Bar Action Styles
+   ============================================= */
+
+/* Style for the new "Submit AI" button in the top bar */
+.button-ai-submit {
+    -fx-background-color: linear-gradient(to bottom, #0f766e, #0d615b);
+}
+.button-ai-submit:hover {
+    -fx-background-color: linear-gradient(to bottom, #12847b, #0f766e);
+}
+
+/* Style for the vertical separator in the top bar */
+.top-bar-separator {
+    -fx-background-color: #374151;
+    -fx-padding: 8 0 8 0;
+}

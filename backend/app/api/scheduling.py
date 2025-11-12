@@ -47,6 +47,26 @@ class UserLogin(BaseModel):
     username: str
     password: str
 
+class BlankScenarioRequest(BaseModel):
+    name: str
+
+class ImportOperation(BaseModel):
+    machine_group_id: str  # The ID of the machine group
+    processing_time: int
+
+class ImportJob(BaseModel):
+    name: str
+    priority: int = 1
+    operations: List[ImportOperation]
+
+class ImportMachineGroup(BaseModel):
+    name: str
+    quantity: int
+
+class ImportRequest(BaseModel):
+    machine_groups: Optional[List[ImportMachineGroup]] = None
+    jobs: Optional[List[ImportJob]] = None
+
 # --- CONTEXT MANAGER (Unchanged) ---
 class AppContext:
     def __init__(self):
@@ -101,6 +121,21 @@ def login(login_data: UserLogin, db: Session = Depends(get_session)):
 
     # Return the token and user info to the client
     return {"session_token": session_token, "username": user.username}
+
+@router.post("/logout", tags=["Authentication"], response_model=Dict[str, str])
+def logout(
+    session_token: str = Header(..., alias="X-Session-Token")
+):
+    """
+    Logs the user out by invalidating their session token.
+    """
+    if session_token in user_sessions:
+        del user_sessions[session_token]
+        print(f"Session token {session_token} invalidated.")
+        return {"message": "Logged out successfully"}
+    
+    # If the token is already invalid, it's still a success
+    return {"message": "No active session found, logged out."}
 
 # --- NEW DEPENDENCY FUNCTION ---
 def get_user_context(
@@ -293,6 +328,27 @@ def _tool_delete_scenario(db: Session, context: AppContext, scenario_id: int) ->
     db.commit()
     return f"Successfully deleted scenario: '{scenario.name}'."
 
+def _tool_rename_scenario(db: Session, context: AppContext, new_name: str) -> str:
+    """
+    Renames the currently active scenario.
+    """
+    scenario = db.get(Scenario, context.current_scenario_id)
+    if not scenario:
+        return "Error: Active scenario not found."
+    
+    if scenario.name == "Live Data":
+        return "Error: Cannot rename the primary 'Live Data' scenario."
+    
+    # Check if the new name is a reserved temporary name
+    if new_name.startswith("temp-what-if-simulation"):
+        return "Error: Cannot use a reserved temporary name."
+
+    scenario.name = new_name
+    db.add(scenario)
+    db.commit()
+    db.refresh(scenario)
+    return f"Active scenario (ID: {context.current_scenario_id}) has been renamed to '{new_name}'."
+
 def _tool_create_scenario(db: Session, context: AppContext, new_scenario_name: str, base_scenario_id: int) -> Dict[str, Any]:
     """
     Copies an existing scenario to create a new "what-if" scenario.
@@ -375,6 +431,141 @@ def _tool_create_scenario(db: Session, context: AppContext, new_scenario_name: s
     db.refresh(new_scenario)
     return new_scenario.model_dump() # Return the new scenario
 
+@router.put("/scenarios/{scenario_id}", response_model=Scenario, tags=["Scenario Management"])
+def rename_scenario_endpoint(
+    scenario_id: int,
+    request_data: BlankScenarioRequest, # Re-using the simple {name: "..."} model
+    db: Session = Depends(get_session),
+    context: AppContext = Depends(get_user_context)
+):
+    """
+    Renames a specific scenario. Bypasses the LLM.
+    """
+    scenario = db.get(Scenario, scenario_id)
+    if not scenario:
+        raise HTTPException(status_code=404, detail="Scenario not found.")
+    
+    if scenario.user_id != context.current_user_id:
+        raise HTTPException(status_code=403, detail="User does not have access to this scenario.")
+
+    if scenario.name == "Live Data":
+        raise HTTPException(status_code=400, detail="Cannot rename the 'Live Data' scenario.")
+        
+    if not request_data.name or request_data.name.startswith("temp-what-if"):
+        raise HTTPException(status_code=400, detail="Invalid or reserved scenario name.")
+
+    scenario.name = request_data.name
+    db.add(scenario)
+    db.commit()
+    db.refresh(scenario)
+    return scenario
+
+@router.post("/scenario/import_data", response_model=Dict[str, str], tags=["Scenario Management"])
+def import_data_to_scenario(
+    request_data: ImportRequest,
+    db: Session = Depends(get_session),
+    context: AppContext = Depends(get_user_context)
+):
+    """
+    Imports a set of new machines and/or jobs into the active scenario.
+    This re-uses the internal tool logic for adding items.
+    """
+    scenario_id = context.current_scenario_id
+    
+    # 1. Add Machine Groups
+    if request_data.machine_groups:
+        for mg in request_data.machine_groups:
+            _tool_add_machine_group(db, context, mg.name, mg.quantity)
+            
+    # --- THIS IS THE FIX ---
+    # We must explicitly "expire" the session's cache.
+    # This forces the next 'select' to fetch the new machine groups
+    # we just committed from the database, rather than using its old cache.
+    db.expire_all()
+    # --- END OF FIX ---
+
+    # 2. Build a lookup map of ALL machine group names to their IDs
+    all_mgs_in_scenario = db.exec(
+        select(MachineGroup).where(MachineGroup.scenario_id == scenario_id)
+    ).all()
+    
+    name_to_id_map = {mg.name: mg.id for mg in all_mgs_in_scenario}
+
+    # 3. Add Jobs
+    if request_data.jobs:
+        for job in request_data.jobs:
+            ops_list = []
+            for op in job.operations:
+                if op.machine_group_id not in name_to_id_map:
+                    raise HTTPException(
+                        status_code=400, 
+                        detail=f"Job '{job.name}' references unknown machine group name: {op.machine_group_id}"
+                    )
+                
+                actual_machine_id = name_to_id_map[op.machine_group_id]
+                
+                ops_list.append({
+                    "machine_group_id": actual_machine_id,
+                    "processing_time": op.processing_time
+                })
+            
+            _tool_add_job(db, context, ops_list, job.name, job.priority)
+
+    return {"message": "Data imported successfully into active scenario."}
+
+@router.get("/scenarios", response_model=list[Scenario], tags=["Scenario Management"])
+def get_user_scenarios(
+    db: Session = Depends(get_session),
+    context: AppContext = Depends(get_user_context)
+):
+    """
+    Fetches a list of all scenarios (e.g., "Live Data", "What-If 1")
+    that belong to the currently authenticated user.
+    """
+    statement = select(Scenario).where(Scenario.user_id == context.current_user_id)
+    scenarios = db.exec(statement).all()
+    return scenarios
+
+@router.post("/scenario/create_blank", response_model=Scenario, tags=["Scenario Management"])
+def create_blank_scenario(
+    request_data: BlankScenarioRequest,
+    db: Session = Depends(get_session),
+    context: AppContext = Depends(get_user_context)
+):
+    """
+    Creates a new, completely blank scenario for the current user.
+    """
+    if not request_data.name or request_data.name.startswith("temp-what-if"):
+        raise HTTPException(status_code=400, detail="Invalid or reserved scenario name.")
+
+    new_scenario = Scenario(name=request_data.name, user_id=context.current_user_id)
+    db.add(new_scenario)
+    db.commit()
+    db.refresh(new_scenario)
+    return new_scenario
+
+@router.post("/select_scenario/{scenario_id}", response_model=Dict[str, Any], tags=["Scenario Management"])
+def select_user_scenario(
+    scenario_id: int,
+    db: Session = Depends(get_session),
+    context: AppContext = Depends(get_user_context)
+):
+    """
+    Sets the 'active' scenario in the user's session context.
+    All future API calls (e.g., solve, add_job) will apply to this scenario.
+    """
+    scenario = db.get(Scenario, scenario_id)
+    if not scenario:
+        raise HTTPException(status_code=404, detail="Scenario not found.")
+    
+    if scenario.user_id != context.current_user_id:
+        raise HTTPException(status_code=403, detail="User does not have access to this scenario.")
+
+    # This updates the session state on the server
+    context.set_scenario(scenario.id)
+    
+    print(f"User {context.current_user_id} switched active scenario to: {scenario.name} (ID: {scenario.id})")
+    return {"message": "Active scenario changed", "scenario_id": scenario.id, "scenario_name": scenario.name}
 
 # --- DATA TOOLS (Refactored for Context) ---
 # All tools now use context.current_scenario_id to filter their queries
@@ -393,10 +584,38 @@ def _tool_remove_job(db: Session, context: AppContext, job_id: str) -> str:
 
 def _tool_add_job(db: Session, context: AppContext, operations: List[Dict[str, Any]], job_name: Optional[str] = None, priority: int = 1) -> str:
     scenario_id = context.current_scenario_id
-    # Get machine groups *from the active scenario*
-    valid_mg_ids = set(db.exec(select(MachineGroup.id).where(MachineGroup.scenario_id == scenario_id)).all())
-    is_valid, msg = validate_operations(operations, valid_mg_ids)
-    if not is_valid: return f"Error: Invalid operations data. {msg}"
+    
+    # Get all MachineGroup objects for this scenario
+    all_mgs = db.exec(select(MachineGroup).where(MachineGroup.scenario_id == scenario_id)).all()
+    valid_mg_ids = {mg.id for mg in all_mgs}
+    name_to_id_map = {mg.name: mg.id for mg in all_mgs}
+
+    # Validate and translate operations
+    translated_ops = []
+    for i, op_data in enumerate(operations):
+        mg_id_or_name = op_data.get("machine_group_id")
+        proc_time = op_data.get("processing_time")
+        
+        final_mg_id = None
+        if mg_id_or_name in valid_mg_ids:
+            final_mg_id = mg_id_or_name  # It was a valid ID
+        elif mg_id_or_name in name_to_id_map:
+            final_mg_id = name_to_id_map[mg_id_or_name] # It was a name, we translated it
+        
+        if not final_mg_id:
+            return f"Error: Invalid machine_group_id or name '{mg_id_or_name}' in operation {i}."
+
+        try:
+            time_int = int(proc_time)
+            if time_int <= 0: raise ValueError("Processing time must be positive")
+            op_data["processing_time"] = time_int
+        except Exception:
+            return f"Error: Invalid processing_time '{proc_time}' in operation {i}."
+        
+        translated_ops.append({
+            "machine_group_id": final_mg_id,
+            "processing_time": op_data["processing_time"]
+        })
 
     # Create new Job linked to the active scenario
     new_job_id = f"S{scenario_id}-J{str(uuid.uuid4())[:6]}"
@@ -404,13 +623,17 @@ def _tool_add_job(db: Session, context: AppContext, operations: List[Dict[str, A
     new_job = Job(id=new_job_id, name=effective_job_name, priority=priority, scenario_id=scenario_id, operation_list=[])
 
     new_operations = []
-    for i, op_data in enumerate(operations):
+    for i, op_data in enumerate(translated_ops):
         op_id = f"{new_job_id}-OP{i+1:02d}"
         predecessors = [f"{new_job_id}-OP{i:02d}"] if i > 0 else []
         new_op = Operation(
-            id=op_id, machine_group_id=op_data["machine_group_id"],
-            processing_time=op_data["processing_time"], predecessors=predecessors,
-            job_id=new_job_id, job=new_job, scenario_id=scenario_id
+            id=op_id,
+            machine_group_id=op_data["machine_group_id"],
+            processing_time=op_data["processing_time"],
+            predecessors=predecessors,
+            job_id=new_job_id, 
+            job=new_job, 
+            scenario_id=scenario_id
         )
         new_operations.append(new_op)
     
@@ -420,34 +643,64 @@ def _tool_add_job(db: Session, context: AppContext, operations: List[Dict[str, A
 
 def _tool_adjust_job(db: Session, context: AppContext, job_id: str, operations: List[Dict[str, Any]]) -> str:
     scenario_id = context.current_scenario_id
-    # Get job *from the active scenario*
+    
     job_to_adjust = db.exec(select(Job).where(Job.id == job_id, Job.scenario_id == scenario_id)).first()
     if not job_to_adjust:
         return f"Warning: Job ID '{job_id}' not found in active scenario."
     
-    # Get machine groups *from the active scenario*
-    valid_mg_ids = set(db.exec(select(MachineGroup.id).where(MachineGroup.scenario_id == scenario_id)).all())
-    is_valid, msg = validate_operations(operations, valid_mg_ids)
-    if not is_valid: return f"Error: Invalid operations data. {msg}"
+    # Get all MachineGroup objects for this scenario
+    all_mgs = db.exec(select(MachineGroup).where(MachineGroup.scenario_id == scenario_id)).all()
+    valid_mg_ids = {mg.id for mg in all_mgs}
+    name_to_id_map = {mg.name: mg.id for mg in all_mgs}
+
+    # Validate and translate operations
+    translated_ops = []
+    for i, op_data in enumerate(operations):
+        mg_id_or_name = op_data.get("machine_group_id")
+        proc_time = op_data.get("processing_time")
+        
+        final_mg_id = None
+        if mg_id_or_name in valid_mg_ids:
+            final_mg_id = mg_id_or_name  # It was a valid ID
+        elif mg_id_or_name in name_to_id_map:
+            final_mg_id = name_to_id_map[mg_id_or_name] # It was a name, we translated it
+        
+        if not final_mg_id:
+            return f"Error: Invalid machine_group_id or name '{mg_id_or_name}' in operation {i}."
+
+        try:
+            time_int = int(proc_time)
+            if time_int <= 0: raise ValueError("Processing time must be positive")
+            op_data["processing_time"] = time_int
+        except Exception:
+            return f"Error: Invalid processing_time '{proc_time}' in operation {i}."
+        
+        translated_ops.append({
+            "machine_group_id": final_mg_id,
+            "processing_time": op_data["processing_time"]
+        })
 
     # Delete old operations
     old_ops = db.exec(select(Operation).where(Operation.job_id == job_id)).all()
     for op in old_ops: db.delete(op)
-    db.commit() # Commit deletions first
+    db.commit()
     
     # Create new operations
     new_operations = []
-    for i, op_data in enumerate(operations):
+    for i, op_data in enumerate(translated_ops):
         op_id = f"{job_id}-OP{i+1:02d}"
         predecessors = [f"{job_id}-OP{i:02d}"] if i > 0 else []
         new_op = Operation(
-            id=op_id, machine_group_id=op_data["machine_group_id"],
-            processing_time=op_data["processing_time"], predecessors=predecessors,
-            job_id=job_id, job=job_to_adjust, scenario_id=scenario_id
+            id=op_id,
+            machine_group_id=op_data["machine_group_id"],
+            processing_time=op_data["processing_time"],
+            predecessors=predecessors,
+            job_id=job_id, 
+            job=job_to_adjust, 
+            scenario_id=scenario_id
         )
         new_operations.append(new_op)
     
-    # Add new operations to the session
     db.add_all(new_operations)
     db.commit()
     
@@ -688,6 +941,36 @@ def _tool_simulate_solve(db: Session, context: AppContext) -> Dict[str, Any]:
         traceback.print_exc()
         return {"error": f"An unexpected error occurred during solving: {e}"}
 
+@router.post("/solve_active_scenario", response_model=ScheduleRead, tags=["Scenario Management"])
+def solve_active_scenario(
+    db: Session = Depends(get_session),
+    context: AppContext = Depends(get_user_context)
+):
+    """
+    Solves the currently active scenario and saves the result.
+    This is a direct-action endpoint, bypassing the LLM.
+    """
+    result = _tool_solve_schedule(db, context)
+    
+    if "error" in result:
+        raise HTTPException(status_code=500, detail=result["error"])
+
+    # Fetch the newly created schedule to return it
+    new_schedule_id = result.get("new_schedule_id")
+    if not new_schedule_id:
+         raise HTTPException(status_code=500, detail="Solver succeeded but did not return a schedule ID.")
+
+    schedule_db = db.exec(
+        select(Schedule)
+        .where(Schedule.id == new_schedule_id)
+        .options(selectinload(Schedule.scheduled_operations))
+    ).first()
+    
+    if not schedule_db:
+        raise HTTPException(status_code=404, detail="Could not retrieve newly solved schedule.")
+
+    return ScheduleRead.model_validate(schedule_db)
+
 def _tool_find_job_id_by_name(db: Session, context: AppContext, job_name: str) -> Dict[str, Optional[str]]:
     scenario_id = context.current_scenario_id
     # Find job *in the active scenario*
@@ -741,6 +1024,7 @@ tool_function_map: Dict[str, Callable] = {
     "create_scenario": _tool_create_scenario,
     "delete_scenario": _tool_delete_scenario,
     "rename_scenario": _tool_rename_scenario,
+    "rename_scenario": _tool_rename_scenario,
     "solve_schedule": _tool_solve_schedule,
     "simulate_solve": _tool_simulate_solve,
     "get_schedule_kpis": _tool_get_schedule_kpis,
@@ -775,7 +1059,7 @@ async def interpret_user_command_orchestrator(
         print(f"\nTurn {turn} for User {context.current_user_id}")
         
         try:
-            llm_response_content_or_error = interpret_command(history=history)
+            llm_response_content_or_error = await interpret_command(history=history)
             if isinstance(llm_response_content_or_error, dict) and 'error' in llm_response_content_or_error:
                 raise HTTPException(status_code=500, detail=f"LLM Error: {llm_response_content_or_error['error']}")
 

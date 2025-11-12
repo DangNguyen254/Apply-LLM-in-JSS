@@ -5,6 +5,8 @@ from dotenv import load_dotenv
 from google.generativeai.types import FunctionDeclaration, Tool, GenerationConfig
 from typing import Dict, Any, List, Optional
 import traceback
+import asyncio  # Import asyncio for non-blocking sleep
+from google.api_core import exceptions as google_exceptions
 
 
 load_dotenv()
@@ -12,7 +14,7 @@ api_key = os.getenv("GOOGLE_API_KEY")
 if api_key:
     genai.configure(api_key=api_key)
 
-# --- Tool Schemas ---
+# --- Tool Schemas (Unchanged) ---
 
 get_active_scenario = FunctionDeclaration(
     name="get_active_scenario",
@@ -59,13 +61,11 @@ solve_schedule = FunctionDeclaration(
     parameters={"type": "object", "properties": {}}
 )
 
-# --- (FIX 1) ADD THIS FUNCTION DECLARATION ---
 simulate_solve = FunctionDeclaration(
     name="simulate_solve",
     description="Runs the solver on the *active scenario* WITHOUT saving the result to the database. Use for 'what-if' simulations.",
     parameters={"type": "object", "properties": {}}
 )
-# --- END OF FIX 1 ---
 
 get_schedule_kpis = FunctionDeclaration(
     name="get_schedule_kpis",
@@ -234,20 +234,35 @@ find_machine_group_id_by_name = FunctionDeclaration(
     }
 )
 
+rename_scenario = FunctionDeclaration(
+    name="rename_scenario",
+    description="Renames the *active scenario*. This CANNOT be used to rename the 'Live Data' scenario.",
+    parameters={
+        "type": "object",
+        "properties": {"new_name": {"type": "string"}},
+        "required": ["new_name"]
+    }
+)
+
+create_blank_scenario = FunctionDeclaration(
+    name="create_blank_scenario",
+    description="Creates a new, completely empty scenario for the user.",
+    parameters={
+        "type": "object",
+        "properties": {"new_scenario_name": {"type": "string"}},
+        "required": ["new_scenario_name"]
+    }
+)
 
 # Assemble Tool
 scheduling_tool = Tool(function_declarations=[
-    # Context Tools
     get_active_scenario,
-    # list_scenarios, 
     select_scenario,
     create_scenario,
     delete_scenario,
-    # rename_scenario,
-    
-    # Action Tools
+    rename_scenario,
     solve_schedule,
-    simulate_solve, # <-- (FIX 2) ADD THIS LINE TO THE LIST
+    simulate_solve,
     get_schedule_kpis,
     add_job,
     remove_job,
@@ -256,8 +271,6 @@ scheduling_tool = Tool(function_declarations=[
     add_machine_group,
     modify_machine_group,
     swap_operations,
-    
-    # Getter Tools
     get_current_problem_state,
     get_job_details,
     get_machine_group_details,
@@ -265,15 +278,17 @@ scheduling_tool = Tool(function_declarations=[
     find_machine_group_id_by_name,
 ])
 
-# --- UPDATED System Prompt ---
+# System prompt is unchanged from the version in our previous message
 system_prompt = """
 You are an expert assistant for a multi-user, scenario-based Job Shop Scheduling application.
 Your role is to act as an orchestrator. You manage a user's workspace and help them analyze scheduling scenarios.
 
-**CONTEXT & WORKFLOW:**
-The user is already logged in and their "Live Data" scenario is active by default.
-All simple commands (like `add_job`, `solve_schedule`) apply directly to this active "Live Data" scenario.
-You do NOT need to ask the user to select a scenario at the start.
+**CRITICAL CONTEXT: THE "ACTIVE SCENARIO"**
+- The user has an "active scenario" set in their session.
+- **ALL** of your tool calls (`add_job`, `solve_schedule`, `modify_machine_group`, `get_current_problem_state`, etc.) will **ONLY** apply to this currently active scenario.
+- The user can change their active scenario at any time using the UI, or they might ask you to do it.
+- The default scenario is "Live Data", but you must never assume it's the active one.
+- To find out which scenario is active, call `get_active_scenario()`.
 
 **ID LOOKUP:**
 - If a user provides a job NAME (e.g., 'Job ABC') when an ID (e.g., 'J001') is needed, you MUST FIRST use `find_job_id_by_name`.
@@ -281,75 +296,94 @@ You do NOT need to ask the user to select a scenario at the start.
 - **CRITICAL:** Names are human-readable (e.g., "Paint Booths", "CUST-304"). Do NOT guess at machine-like names (e.g., "PAINT_0" or "MG-PAINT_0"). Use the exact name the user provides.
 
 **HANDLING RELATIVE COMMANDS (e.g., "highest", "last")**
-- If the user uses a relative term like 'highest priority' or 'lowest priority' for a job, you cannot just guess a number.
+- If the user uses a relative term like 'highest priority' for a job, you cannot just guess a number.
 - Your plan MUST be:
-  1. Call `get_current_problem_state` to see the list of all jobs and their current priorities.
+  1. Call `get_current_problem_state` to see the list of all jobs (in the active scenario) and their current priorities.
   2. Analyze the tool output to find the current maximum or minimum priority.
   3. Calculate the correct new priority (e.g., `max(priorities) + 1` for 'highest', or `min(priorities) - 1` for 'lowest').
   4. Call `modify_job` with the correct job ID and the newly calculated priority number.
 - This also applies to other relative terms like "delete the last job added" (you must `get_current_problem_state` to find the job with the newest-looking ID).
 
-**WHAT-IF SCENARIOS (SIMULATIONS):**
-This is a key feature.
-1.  If the user asks a "what-if" or "simulate" question (e.g., "what if a machine breaks?"), your plan MUST be:
-    a. Call `get_active_scenario` to get the ID of the user's "Live Data" scenario (e.g., `base_scenario_id = 1`).
-    b. Call `create_scenario(new_scenario_name="temp-what-if-simulation", base_scenario_id=1)`. This tool will return the new scenario's details, including its ID.
-    c. Call `select_scenario(scenario_id=...)` to *silently* switch your context to this new temporary scenario.
-    d. Apply the simulation's modifications (e.g., `modify_machine_group(...)`) to this temporary scenario.
-    e. Call `simulate_solve()` to get the results (this does not save).
-    f. **CRITICAL:** Call `select_scenario(scenario_id=1)` to switch the context *back* to the user's "Live Data" scenario.
-    g. **CRITICAL:** Call `delete_scenario(scenario_id=...)` to clean up the temporary scenario (use the ID from step b).
-    h. Present the results to the user (e.g., "If you made that change, the makespan would be X.").
+**CRITICAL: "WHAT-IF" SCENARIO WORKFLOW:**
+You MUST follow this exact 8-step plan for any "what-if" or "simulate" question.
+**NEVER** apply a "what-if" modification (like `modify_machine_group`) directly to the user's active scenario without permission.
+
+1.  **Get Base ID:** Call `get_active_scenario()` to get the `scenario_id` of the user's *current* scenario (e.g., `base_id = 1`).
+2.  **Create Temp:** Call `create_scenario(new_scenario_name="temp-what-if-simulation", base_scenario_id=base_id)`. Get the `new_scenario_id` from the response (e.g., `temp_id = 2`).
+3.  **Select Temp:** Call `select_scenario(scenario_id=temp_id)` to switch your context *into* the temporary scenario.
+4.  **Apply Change (to Temp):** Call the modification tool (e.g., `modify_machine_group(...)`) for the temporary scenario.
+5.  **Simulate Solve:** Call `simulate_solve()` to get the KPIs for the temporary scenario (this does not save).
+6.  **CRITICAL - Revert Context:** Call `select_scenario(scenario_id=base_id)` to switch your context *back* to the user's original scenario.
+7.  **CRITICAL - Clean Up:** Call `delete_scenario(scenario_id=temp_id)` to remove the temporary scenario.
+8.  **Report to User:** Present the results from step 5 (e.g., "I ran a simulation based on your active scenario. If you made that change, the makespan would be X...").
 
 **MAKING A "WHAT-IF" CHANGE REAL:**
 If the user *likes* the simulation result and says "make that real," "save that," or "I want to do that":
-1.  The user's active scenario is already "Live Data" (because you switched back in step 'f').
-2.  Your plan is to *re-apply the modification* from the simulation, but this time to the "Live Data" scenario.
+1.  The user's active scenario is already the correct one (because you switched back in step 6).
+2.  Your plan is to *re-apply the modification* from the simulation, but this time to the *active* scenario.
 3.  Call the modification tool (e.g., `modify_machine_group(...)`).
 4.  Call `solve_schedule()` (the *real* one) to save this new state.
-5.  Inform the user, "Done. I have applied that change to your 'Live Data' schedule."
+5.  Inform the user, "Done. I have applied that change to your active schedule."
 
 **IMPORTANT:**
 - Only respond with a tool call *or* a text answer, never both.
 - A text answer means your plan is finished for that turn.
 """
 
-def interpret_command(history: List[Dict[str, Any]]) -> Any:
+async def interpret_command(history: List[Dict[str, Any]]) -> Any:
     """
     Interprets user command using the LLM with function calling capabilities.
+    Includes exponential backoff for 429 errors.
+    This is now an async function.
     """
     
-    try:
-        config = GenerationConfig(
-            max_output_tokens=8192,
-            temperature=0.2 
-        )
+    config = GenerationConfig(
+        max_output_tokens=8192,
+        temperature=0.2 
+    )
 
-        model = genai.GenerativeModel(
-            'models/gemini-2.0-flash-lite', # Correct model name
-            tools=[scheduling_tool],
-            system_instruction=system_prompt,
-        )
+    model = genai.GenerativeModel(
+        'gemini-2.0-flash', 
+        tools=[scheduling_tool],
+        system_instruction=system_prompt,
+    )
+    
+    max_retries = 3
+    base_wait_time = 1.5  # Start with 1.5 seconds
 
-        response = model.generate_content(
-            history,
-            generation_config=config,
-        )
+    for attempt in range(max_retries):
+        try:
+            # Use the asynchronous method
+            response = await model.generate_content_async(
+                history,
+                generation_config=config,
+            )
+            
+            if response.candidates and response.candidates[0].content.parts:
+                return response.candidates[0].content
 
-        if not response.candidates or not response.candidates[0].content.parts:
             finish_reason = response.candidates[0].finish_reason if response.candidates else "Unknown"
             safety_ratings = response.candidates[0].safety_ratings if response.candidates else "Unknown"
             error_message = f"LLM response empty/blocked. Finish Reason: {finish_reason}. Safety: {safety_ratings}"
             print(f"Warning: {error_message}")
-            
             return {'error': f"Could not get valid response from LLM. Reason: {finish_reason}"}
 
-        return response.candidates[0].content
-
-    except Exception as e:
-        print(f"Error during LLM communication: {e}")
-        traceback.print_exc()
-        history_repr = json.dumps(history, indent=2) if history else "None"
-        if "contents must not be empty" in str(e):
-             return {'error': f"LLM communication error: 'contents must not be empty'. History sent: {history_repr}"}
-        return {'error': f"LLM communication error: {e}"}
+        except google_exceptions.ResourceExhausted as e:
+            if attempt < max_retries - 1:
+                wait_time = (base_wait_time ** attempt)
+                print(f"Warning: 429 Resource Exhausted. Retrying in {wait_time:.2f} seconds...")
+                # Use the non-blocking sleep
+                await asyncio.sleep(wait_time)
+            else:
+                print(f"Error: 429 Resource Exhausted after {max_retries} attempts.")
+                return {'error': f"LLM communication error: {e}"}
+        
+        except Exception as e:
+            print(f"Error during LLM communication: {e}")
+            traceback.print_exc()
+            history_repr = json.dumps(history, indent=2) if history else "None"
+            if "contents must not be empty" in str(e):
+                 return {'error': f"LLM communication error: 'contents must not be empty'. History sent: {history_repr}"}
+            return {'error': f"LLM communication error: {e}"}
+    
+    return {'error': 'LLM call failed after all retries.'}

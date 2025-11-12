@@ -1,41 +1,91 @@
 package tdtu.dang.jssp;
+
 import javafx.application.Application;
 import javafx.fxml.FXMLLoader;
 import javafx.scene.Parent;
 import javafx.scene.Scene;
 import javafx.stage.Stage;
+import tdtu.dang.jssp.controllers.LoginViewController;
+import tdtu.dang.jssp.controllers.MainViewController;
+import tdtu.dang.jssp.services.ApiClient;
 
-public class MainApp extends Application{
+import java.io.IOException;
+
+public class MainApp extends Application {
+    
+    private Stage primaryStage;
+    private Scene loginScene;
+    private Scene mainScene;
+    
+    private LoginViewController loginViewController;
+    private MainViewController mainViewController;
+
     public static void main(String[] args) {
         launch(args);
     }
 
-    public void start(Stage primaryStage){
+    @Override
+    public void start(Stage primaryStage) {
+        this.primaryStage = primaryStage;
+        
+        // We use one shared ApiClient for the whole app
+        ApiClient sharedApiClient = new ApiClient();
+
         try {
-            // Create an FXMLLoader to find FXML file.
-            FXMLLoader loader = new FXMLLoader(getClass().getResource("/tdtu/dang/jssp/views/MainView.fxml"));
+            // Load Login View
+            FXMLLoader loginLoader = new FXMLLoader(getClass().getResource("/tdtu/dang/jssp/views/LoginView.fxml"));
+            Parent loginRoot = loginLoader.load();
+            this.loginViewController = loginLoader.getController();
+            this.loginViewController.setMainApp(this);
+            this.loginViewController.setApiClient(sharedApiClient);
+            this.loginScene = new Scene(loginRoot, 400, 400); // Fixed size for login
 
-            // Load the FXML to create the layout.
-            Parent root = loader.load();
-
-            // Create a Scene containing that layout.
-            Scene scene = new Scene(root);
-
-            // Set the window title.
-            primaryStage.setTitle("JSSP Solver with LLM");
-
-            // fill screen without hide the menu bar
-            primaryStage.setMaximized(true);
-
-            // Place the Scene onto the Stage.
-            primaryStage.setScene(scene);
+            // Load Main View
+            FXMLLoader mainLoader = new FXMLLoader(getClass().getResource("/tdtu/dang/jssp/views/MainView.fxml"));
+            Parent mainRoot = mainLoader.load();
+            this.mainViewController = mainLoader.getController();
+            this.mainViewController.setMainApp(this); // Pass MainApp to main controller
             
+            // Note: We don't set the ApiClient or username until AFTER login
+            
+            this.mainScene = new Scene(mainRoot);
 
-            // Show the Stage (make the window visible).
+            // Set the window title
+            primaryStage.setTitle("JSSP Orchestrator");
+            
+            // Show the Login Scene first
+            primaryStage.setScene(loginScene);
             primaryStage.show();
 
         } catch (Exception e) {
             e.printStackTrace();
         }
+    }
+
+    /**
+     * Called by LoginViewController after a successful login.
+     */
+    public void showMainView(String username, ApiClient apiClient) {
+        // Pass the shared, authenticated ApiClient to the main controller
+        mainViewController.onLoginSuccess(apiClient, username);
+        
+        // Switch the scene
+        primaryStage.setScene(mainScene);
+        primaryStage.setMaximized(true); // Maximize the main window
+    }
+
+    /**
+     * Called by MainViewController on logout.
+     */
+    public void showLoginView() {
+        // Clear password field for security
+        loginViewController.clearPassword();
+        
+        // Switch the scene
+        primaryStage.setScene(loginScene);
+        primaryStage.setMaximized(false); // Un-maximize
+        primaryStage.setWidth(400);
+        primaryStage.setHeight(400);
+        primaryStage.centerOnScreen();
     }
 }

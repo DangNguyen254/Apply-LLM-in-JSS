@@ -4,10 +4,19 @@ from sqlalchemy.engine import Engine
 # Import all models, including the new DB-backed schedules
 from app.models.jssp_model import (
     Job, Operation, MachineGroup, Scenario, User, CommandLog,
-    Schedule, ScheduledOperation
+    Schedule, ScheduledOperation,
+    SolverSchedule # <-- ADD THIS IMPORT
 )
 # Import the new mock data structure
 from app.api.mock_data import TEST_PROBLEMS 
+
+# --- ADD THESE IMPORTS ---
+from app.services.jssp_solver import solve_jssp
+import datetime
+from sqlalchemy.orm import selectinload
+from typing import Optional
+# --- END OF NEW IMPORTS ---
+
 
 DATABASE_URL = "mssql+pyodbc://ACER\\NMDSERVER/jssp_db?driver=ODBC+Driver+17+for+SQL+Server&trusted_connection=yes"
 
@@ -21,7 +30,6 @@ def populate_database(session: Session) -> (int, int):
     """
     print("Database is empty, creating default user and 'Live' scenario...")
     
-    # --- THIS IS THE NEW DATA KEY ---
     live_data_key = "automotive_plant_live"
     if live_data_key not in TEST_PROBLEMS:
         raise ValueError(f"Mock data key '{live_data_key}' not found in mock_data.py")
@@ -62,7 +70,7 @@ def populate_database(session: Session) -> (int, int):
             name=job_data["name"],
             priority=job_data["priority"],
             scenario_id=live_scenario.id,
-            operation_list=[] # Will be populated by the relationship
+            operation_list=[]
         )
         all_jobs.append(job)
         
@@ -83,16 +91,69 @@ def populate_database(session: Session) -> (int, int):
     session.commit()
     print("New automotive mock data populated for 'Live Data' scenario.")
     
-    # Return the IDs we need
+    # --- START: NEW BLOCK TO SOLVE INITIAL SCHEDULE ---
+    try:
+        print("Running initial solve for 'Live Data' scenario...")
+        # We must eager-load the operations for the solver
+        jobs_with_ops = session.exec(
+            select(Job)
+            .where(Job.scenario_id == live_scenario.id)
+            .options(selectinload(Job.operation_list))
+        ).all()
+        
+        machine_groups = session.exec(
+            select(MachineGroup).where(MachineGroup.scenario_id == live_scenario.id)
+        ).all()
+
+        if not jobs_with_ops or not machine_groups:
+            print("Warning: No jobs or machines found, skipping initial solve.")
+        else:
+            solver_result: Optional[SolverSchedule] = solve_jssp(
+                jobs=jobs_with_ops, 
+                machine_groups=machine_groups
+            )
+            
+            if solver_result:
+                # Create the new Schedule DB object
+                new_schedule_db = Schedule(
+                    makespan=solver_result.makespan,
+                    average_flow_time=solver_result.average_flow_time,
+                    machine_utilization=solver_result.machine_utilization,
+                    scenario_id=live_scenario.id,
+                    timestamp=datetime.datetime.now()
+                )
+                session.add(new_schedule_db)
+                
+                # Create all the new ScheduledOperation DB objects
+                new_ops_db = []
+                for op_result in solver_result.scheduled_operations:
+                    new_ops_db.append(
+                        ScheduledOperation(
+                            job_id=op_result.job_id,
+                            operation_id=op_result.operation_id,
+                            machine_instance_id=op_result.machine_instance_id,
+                            start_time=op_result.start_time,
+                            end_time=op_result.end_time,
+                            schedule=new_schedule_db # Link to the parent
+                        )
+                    )
+                session.add_all(new_ops_db)
+                session.commit()
+                print(f"Successfully saved initial schedule for 'Live Data' with Makespan: {solver_result.makespan}.")
+            else:
+                print("Error: Initial solve failed to find a solution.")
+
+    except Exception as e:
+        print(f"Error during initial solve: {e}")
+        session.rollback()
+    # --- END: NEW BLOCK ---
+
     return default_user.id, live_scenario.id
 
 def create_db_and_tables():
     """
     Creates all database tables and populates them if they are empty.
     """
-    # This will now create all 9 tables:
-    # User, Scenario, MachineGroup, Job, Operation,
-    # CommandLog, Schedule, ScheduledOperation
     SQLModel.metadata.create_all(engine)
     
     with Session(engine) as session:
@@ -100,7 +161,7 @@ def create_db_and_tables():
         user = session.exec(statement).first()
         
         if not user:
-            # Database is empty
+            # Database is empty, this will now populate AND solve
             user_id, scenario_id = populate_database(session)
         else:
             # User exists, find their "Live Data" scenario
@@ -110,7 +171,6 @@ def create_db_and_tables():
             if live_scenario:
                 print("Database already populated. Default context found.")
             else:
-                # This state is broken (user exists, but no live scenario)
                 print("Error: Database in broken state. Manually running populate.")
                 populate_database(session)
 

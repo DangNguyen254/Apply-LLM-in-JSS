@@ -23,7 +23,7 @@ public class Scenario {
     // This is the important part that will be displayed in the ComboBox
     @Override
     public String toString() {
-        return String.format("%s (ID: %d)", this.name, this.id);
+        return this.name;
     }
 
     // Optional: Add equals/hashCode for proper ComboBox selection management
@@ -39,4 +39,5 @@ public class Scenario {
     public int hashCode() {
         return java.util.Objects.hash(id);
     }
+
 }

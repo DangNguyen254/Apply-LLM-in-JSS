@@ -30,7 +30,7 @@ public class GanttChart extends Pane {
     // --- CHART STYLING CONSTANTS ---
     private double timeScale = 50.0;  // Pixels per time unit (mutable for zoom)
     private static final double ROW_HEIGHT = 60.0;  // Height for one machine instance
-    private static final double HEADER_WIDTH = 140.0; // Width of the Y-axis label area
+    private static final double HEADER_WIDTH = 160.0; // Width of the Y-axis label area
     private static final double PADDING = 20.0;
     private static final double TIME_AXIS_HEIGHT = 30.0; // Height for time numbers
     private static final double RECT_V_PADDING = 8.0; // Padding inside the row

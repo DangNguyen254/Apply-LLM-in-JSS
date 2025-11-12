@@ -18,7 +18,7 @@ public class ApiClient {
 
     private final HttpClient httpClient;
     private final ObjectMapper objectMapper;
-    private static final String BASE_URL = "http://127.0.0.1:8000/api/scheduling"; // Backend server address
+    private static final String BASE_URL = "http://127.0.0.1:8000/api/scheduling";
 
     private String sessionToken;
 
@@ -31,8 +31,7 @@ public class ApiClient {
     }
 
     /**
-     * Attempts to log in to the backend. If successful, stores the
-     * session token for all future requests.
+     * Attempts to log in. Returns username on success, null on failure.
      */
     public String login(String username, String password) throws IOException, InterruptedException {
         String url = BASE_URL + "/login";
@@ -50,7 +49,13 @@ public class ApiClient {
 
         HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
 
+        if (response.statusCode() == 401) {
+            // 401 is "Unauthorized", a normal failed login
+            return null;
+        }
+
         if (response.statusCode() != 200) {
+            // Other errors (like 500) are exceptions
             throw new IOException("Login failed: " + response.body());
         }
 
@@ -63,11 +68,54 @@ public class ApiClient {
     }
 
     /**
+     * Logs the user out by invalidating the token on the server.
+     */
+    public void logout() {
+        if (this.sessionToken == null) {
+            return; // Already logged out
+        }
+        
+        String url = BASE_URL + "/logout";
+        try {
+            HttpRequest request = HttpRequest.newBuilder()
+                    .uri(URI.create(url))
+                    .header("X-Session-Token", this.sessionToken)
+                    .POST(HttpRequest.BodyPublishers.noBody())
+                    .build();
+            
+            // Send asynchronously, we don't care about the response
+            httpClient.sendAsync(request, HttpResponse.BodyHandlers.ofString());
+            
+        } catch (Exception e) {
+            // Don't crash the app if logout fails
+            System.err.println("Failed to send logout request: " + e.getMessage());
+        } finally {
+            // Always clear the token locally
+            clearSessionToken();
+        }
+    }
+
+    /**
+     * Allows the LoginController to set the token.
+     */
+    public void setSessionToken(String token) {
+        this.sessionToken = token;
+    }
+    
+    /**
+     * Clears the session token locally.
+     */
+    public void clearSessionToken() {
+        this.sessionToken = null;
+        System.out.println("Local session token cleared.");
+    }
+
+    /**
      * Checks if the client is authenticated (has a session token).
      */
     private void checkAuth() throws IOException {
         if (this.sessionToken == null || this.sessionToken.isEmpty()) {
-            throw new IOException("Client is not authenticated. Please call login() first.");
+            throw new IOException("Client is not authenticated. Please log in.");
         }
     }
     
@@ -127,10 +175,100 @@ public class ApiClient {
     }
 
     /**
-     * (DELETED) The solveProblem() method has been removed.
-     * All solving is now done via interpretCommand("solve").
+     * Fetches all scenarios available for the current user.
      */
+    public List<Scenario> getScenarios() throws IOException, InterruptedException {
+        checkAuth(); // Ensure we are logged in
+        String url = BASE_URL + "/scenarios";
+        
+        HttpRequest request = HttpRequest.newBuilder()
+                .uri(URI.create(url))
+                .header("X-Session-Token", this.sessionToken) // Add the session token
+                .GET()
+                .build();
+                
+        HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
+        if (response.statusCode() != 200) throw new IOException("Failed to fetch scenarios: " + response.body());
+        
+        List<Scenario> scenarios = objectMapper.readValue(response.body(), new TypeReference<List<Scenario>>() {});
+        System.out.println("[DEBUG getScenarios] Found " + scenarios.size() + " scenarios.");
+        return scenarios;
+    }
 
+    /**
+     * Tells the backend to change the user's active scenario.
+     */
+    public void selectScenario(int scenarioId) throws IOException, InterruptedException {
+        checkAuth(); // Ensure we are logged in
+        String url = BASE_URL + "/select_scenario/" + scenarioId;
+        
+        HttpRequest request = HttpRequest.newBuilder()
+                .uri(URI.create(url))
+                .header("X-Session-Token", this.sessionToken) // Add the session token
+                .POST(HttpRequest.BodyPublishers.noBody())
+                .build();
+                
+        HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
+        if (response.statusCode() != 200) throw new IOException("Failed to select scenario: " + response.body());
+        
+        System.out.println("[DEBUG selectScenario] Backend response: " + response.body());
+    }
+
+    /**
+     * Creates a new, blank scenario.
+     */
+    public Scenario createBlankScenario(String name) throws IOException, InterruptedException {
+        checkAuth(); // Ensure we are logged in
+        String url = BASE_URL + "/scenario/create_blank";
+
+        ObjectNode requestBody = objectMapper.createObjectNode();
+        requestBody.put("name", name);
+        String requestBodyString = objectMapper.writeValueAsString(requestBody);
+
+        HttpRequest request = HttpRequest.newBuilder()
+                .uri(URI.create(url))
+                .header("Content-Type", "application/json")
+                .header("X-Session-Token", this.sessionToken)
+                .POST(HttpRequest.BodyPublishers.ofString(requestBodyString))
+                .build();
+
+        HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
+
+        if (response.statusCode() != 200) { // Expects 200 OK now
+            throw new IOException("Failed to create blank scenario: " + response.body());
+        }
+
+        return objectMapper.readValue(response.body(), Scenario.class);
+    }
+
+    /**
+     * Renames an existing scenario.
+     */
+    public Scenario renameScenario(int scenarioId, String newName) throws IOException, InterruptedException {
+        checkAuth(); // Ensure we are logged in
+        // This URL now matches the backend endpoint
+        String url = BASE_URL + "/scenarios/" + scenarioId;
+
+        ObjectNode requestBody = objectMapper.createObjectNode();
+        requestBody.put("name", newName);
+        String requestBodyString = objectMapper.writeValueAsString(requestBody);
+
+        HttpRequest request = HttpRequest.newBuilder()
+                .uri(URI.create(url))
+                .header("Content-Type", "application/json")
+                .header("X-Session-Token", this.sessionToken) // Add the session token
+                .PUT(HttpRequest.BodyPublishers.ofString(requestBodyString)) // Use PUT
+                .build();
+
+        HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
+
+        if (response.statusCode() != 200) {
+            throw new IOException("Failed to rename scenario: " + response.body());
+        }
+
+        return objectMapper.readValue(response.body(), Scenario.class);
+    }
+    
     /**
      * NEW: Fetches the latest *saved* schedule from the database.
      * Used by the "Export" button.
@@ -158,7 +296,28 @@ public class ApiClient {
         return schedule;
     }
 
+    /**
+     * Solves the user's currently active scenario. Bypasses the LLM.
+     */
+    public Schedule solveActiveScenario() throws IOException, InterruptedException {
+        checkAuth(); // Ensure we are logged in
+        String url = BASE_URL + "/solve_active_scenario";
 
+        HttpRequest request = HttpRequest.newBuilder()
+                .uri(URI.create(url))
+                .header("X-Session-Token", this.sessionToken)
+                .POST(HttpRequest.BodyPublishers.noBody())
+                .build();
+
+        HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
+
+        if (response.statusCode() != 200) {
+            throw new IOException("Failed to solve schedule: " + response.body());
+        }
+
+        return objectMapper.readValue(response.body(), Schedule.class);
+    }
+    
     /**
      * Sends a command to the LLM orchestrator for the user's active session.
      */
@@ -194,6 +353,29 @@ public class ApiClient {
             System.out.println("[DEBUG interpretCommand] schedule makespan=" + s.getMakespan() + " ops=" + ops);
         }
         return resp;
+    }
+
+    /**
+     * Imports data into the user's active scenario from a JSON string.
+     */
+    public void importData(String jsonContent) throws IOException, InterruptedException {
+        checkAuth(); // Ensure we are logged in
+        String url = BASE_URL + "/scenario/import_data";
+        
+        // We send the raw JSON content as the request body.
+        // FastAPI will handle parsing it into the ImportRequest model.
+        HttpRequest request = HttpRequest.newBuilder()
+                .uri(URI.create(url))
+                .header("Content-Type", "application/json")
+                .header("X-Session-Token", this.sessionToken)
+                .POST(HttpRequest.BodyPublishers.ofString(jsonContent))
+                .build();
+
+        HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
+
+        if (response.statusCode() != 200) {
+            throw new IOException("Failed to import data: " + response.body());
+        }
     }
 
     /**
